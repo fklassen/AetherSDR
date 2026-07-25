@@ -49,12 +49,16 @@ signals:
     // One complete FFT frame; values are y-pixels from the top at the
     // pan's ypixels scale (smaller = stronger signal).
     void fftFrame(QVector<int> bins);
+    // Meter data packet (PCC 0x8002): parallel id/raw-value arrays.
+    // Value semantics depend on the meter's unit (dBm = raw/128).
+    void meterData(QVector<quint16> ids, QVector<qint16> values);
 
 private:
     void onReadyRead();
     void sendPrime();
     void handleAudio(const uchar* raw, int size, bool hasTrailer);
     void handleFft(const uchar* raw, int size, bool hasTrailer);
+    void handleMeter(const uchar* raw, int size, bool hasTrailer);
 
     QUdpSocket m_socket;
     QTimer m_primeTimer;

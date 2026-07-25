@@ -58,6 +58,36 @@ slices = {
 }
 
 
+METER_DEFS = {7: 0, 8: 1}  # meter index -> slice num (SLC/LEVEL, dBm)
+
+
+def meter_def_status():
+    parts = []
+    for idx, num in METER_DEFS.items():
+        parts.append(f"{idx}.src=SLC#{idx}.num={num}#{idx}.nam=LEVEL"
+                     f"#{idx}.unit=dBm#{idx}.low=-150.0#{idx}.hi=20.0")
+    return f"S{HANDLE}|meter {'#'.join(parts)}\n"
+
+
+def meter_sender(stop_event):
+    """Meter VITA packets (PCC 0x8002): wobbling S-meter per slice,
+    dBm raw = value * 128."""
+    t = 0
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print(f"meter sender -> {AUDIO_DEST}", flush=True)
+    while not stop_event.is_set():
+        payload = b""
+        for idx, num in METER_DEFS.items():
+            dbm = -85 + 12 * math.sin(t * 0.7 + num * 2)
+            payload += struct.pack(">Hh", idx, int(dbm * 128))
+        word0 = (0x3 << 28) | (0x1 << 24) | ((t & 0xF) << 16) | ((28 + len(payload)) // 4)
+        header = struct.pack(">IIIIIII", word0, 0x00000700,
+                             0x00001C2D, 0x534C8002, 0, 0, 0)
+        sock.sendto(header + payload, AUDIO_DEST)
+        t += 1
+        stop_event.wait(0.25)
+
+
 def pan_status():
     return (f"S{HANDLE}|display pan 0x{PAN_STREAM_ID:08X} "
             f"center={pan['center']:.6f} bandwidth={pan['bandwidth']:.6f} "
@@ -127,6 +157,12 @@ def serve(conn, addr):
             if not text.startswith("C"):
                 continue
             seq, _, cmd = text[1:].partition("|")
+            if cmd == "sub meter all":
+                conn.sendall(f"R{seq}|0|\n".encode())
+                conn.sendall(meter_def_status().encode())
+                threading.Thread(target=meter_sender, args=(audio_stop,),
+                                 daemon=True).start()
+                continue
             if cmd.startswith("stream create type=remote_audio_rx"):
                 conn.sendall(f"R{seq}|0|{AUDIO_STREAM_ID:X}\n".encode())
                 threading.Thread(target=audio_sender, args=(audio_stop,),

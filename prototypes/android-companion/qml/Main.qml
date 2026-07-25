@@ -100,12 +100,35 @@ ApplicationWindow {
                 }
             }
 
-            footer: Label {
-                visible: connection.state.startsWith("error")
-                         || connection.state === "connecting"
-                text: connection.state
-                padding: 12
-                color: connection.state === "connecting" ? "#666" : "#c62828"
+            footer: ColumnLayout {
+                spacing: 0
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: 12
+                    spacing: 8
+                    TextField {
+                        id: manualIp
+                        Layout.fillWidth: true
+                        placeholderText: "Radio IP (manual connect)"
+                        inputMethodHints: Qt.ImhPreferNumbers
+                    }
+                    Button {
+                        text: "Connect"
+                        enabled: manualIp.text.length > 0
+                        onClicked: connection.connectToRadio(
+                                       manualIp.text, 4992,
+                                       manualIp.text)
+                    }
+                }
+
+                Label {
+                    visible: connection.state.startsWith("error")
+                             || connection.state === "connecting"
+                    text: connection.state
+                    padding: 12
+                    color: connection.state === "connecting" ? "#666" : "#c62828"
+                }
             }
         }
     }
@@ -220,6 +243,16 @@ ApplicationWindow {
                     required property int sliceId
                     required property double freqMhz
                     required property string mode
+                    required property double sMeterDbm
+
+                    // S-units: S9 = -73 dBm, 6 dB per unit below, dB-over above.
+                    function sUnits(dbm) {
+                        if (dbm <= -140) return "—"
+                        var s = 9 + (dbm + 73) / 6
+                        if (s <= 9)
+                            return "S" + Math.max(0, Math.round(s))
+                        return "S9+" + Math.round(dbm + 73)
+                    }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -230,6 +263,13 @@ ApplicationWindow {
                                 text: "Slice " + String.fromCharCode(65 + sliceCard.sliceId)
                                 font.pixelSize: 14
                                 opacity: 0.7
+                            }
+                            Label {
+                                text: sliceCard.sUnits(sliceCard.sMeterDbm)
+                                      + "  (" + sliceCard.sMeterDbm.toFixed(0) + " dBm)"
+                                font.pixelSize: 14
+                                font.bold: true
+                                color: "#2e7d32"
                             }
                             Item { Layout.fillWidth: true }
                             ComboBox {

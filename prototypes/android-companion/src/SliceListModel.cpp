@@ -14,6 +14,7 @@ QVariant SliceListModel::data(const QModelIndex& index, int role) const
     case SliceIdRole: return s.id;
     case FreqMhzRole: return s.freqMhz;
     case ModeRole:    return s.mode;
+    case SMeterDbmRole: return s.sMeterDbm;
     }
     return {};
 }
@@ -24,6 +25,7 @@ QHash<int, QByteArray> SliceListModel::roleNames() const
         {SliceIdRole, "sliceId"},
         {FreqMhzRole, "freqMhz"},
         {ModeRole, "mode"},
+        {SMeterDbmRole, "sMeterDbm"},
     };
 }
 
@@ -69,6 +71,16 @@ void SliceListModel::applyStatus(int sliceId, const QHash<QString, QString>& kvs
 
     const QModelIndex idx = index(row);
     emit dataChanged(idx, idx);
+}
+
+void SliceListModel::setSMeter(int sliceId, double dbm)
+{
+    const int row = rowOf(sliceId);
+    if (row < 0)
+        return;
+    m_slices[static_cast<size_t>(row)].sMeterDbm = dbm;
+    const QModelIndex idx = index(row);
+    emit dataChanged(idx, idx, {SMeterDbmRole});
 }
 
 void SliceListModel::clear()

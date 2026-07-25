@@ -9,6 +9,7 @@ namespace {
 constexpr int kVitaHeaderBytes = 28;
 constexpr quint16 kPccIfNarrow = 0x03E3;
 constexpr quint16 kPccFft = 0x8003;
+constexpr quint16 kPccMeter = 0x8002;
 constexpr int kFftSubheaderBytes = 12;
 constexpr int kSampleRate = 24000;
 } // namespace
@@ -123,6 +124,9 @@ void VitaStream::onReadyRead()
         } else if (pcc == kPccFft && streamId == m_fftStreamId) {
             ++m_packetsReceived;
             handleFft(raw, data.size(), hasTrailer);
+        } else if (pcc == kPccMeter) {
+            ++m_packetsReceived;
+            handleMeter(raw, data.size(), hasTrailer);
         }
     }
 }
@@ -143,6 +147,24 @@ void VitaStream::handleAudio(const uchar* raw, int size, bool hasTrailer)
         std::memcpy(&dst[i], &u, 4);
     }
     m_bytesPlayed += m_sinkIo->write(pcm);
+}
+
+void VitaStream::handleMeter(const uchar* raw, int size, bool hasTrailer)
+{
+    // Payload: repeated (u16 meter id, s16 raw value), big-endian —
+    // facts mirror PanadapterStream::decodeMeterData.
+    const int payloadBytes = size - kVitaHeaderBytes - (hasTrailer ? 4 : 0);
+    const int numMeters = payloadBytes / 4;
+    if (numMeters <= 0)
+        return;
+    const uchar* payload = raw + kVitaHeaderBytes;
+    QVector<quint16> ids(numMeters);
+    QVector<qint16> values(numMeters);
+    for (int i = 0; i < numMeters; ++i) {
+        ids[i] = qFromBigEndian<quint16>(payload + i * 4);
+        values[i] = qFromBigEndian<qint16>(payload + i * 4 + 2);
+    }
+    emit meterData(ids, values);
 }
 
 void VitaStream::handleFft(const uchar* raw, int size, bool hasTrailer)

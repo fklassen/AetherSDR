@@ -37,13 +37,23 @@ ConnectionModel::ConnectionModel(QObject* parent)
         sendCommand("client program AetherCompanion");
         sendCommand("sub slice all");
         sendCommand("sub pan all");
+        sendCommand("sub meter all");
     });
+    connect(&m_vita, &VitaStream::meterData, this,
+            [this](const QVector<quint16>& ids, const QVector<qint16>& values) {
+                for (int i = 0; i < ids.size(); ++i) {
+                    const auto it = m_sMeterSliceByIndex.constFind(ids[i]);
+                    if (it != m_sMeterSliceByIndex.constEnd())
+                        m_slices.setSMeter(*it, values[i] / 128.0); // dBm
+                }
+            });
     const auto teardown = [this] {
         setForegroundService(false);
         m_vita.closeSocket();
         m_rxAudioStreamId = 0;
         m_panId = 0;
         m_pendingReplies.clear();
+        m_sMeterSliceByIndex.clear();
         m_slices.clear();
         emit panChanged();
     };
@@ -218,6 +228,39 @@ void ConnectionModel::handleLine(const QString& line)
     if (bar < 0)
         return;
     const QString body = line.mid(bar + 1);
+
+    // Meter definitions: "meter 7.src=SLC#7.num=0#7.nam=LEVEL#…"
+    // ('#'-separated "index.key=value" tokens — FlexBackend::decodeMeterStatus).
+    // The spike only tracks per-slice LEVEL meters (the S-meter).
+    if (body.startsWith(QStringLiteral("meter "))) {
+        const QString meterBody = body.mid(6);
+        if (meterBody.contains(QStringLiteral("removed")))
+            return;
+        QHash<int, QHash<QString, QString>> grouped;
+        const QStringList meterTokens = meterBody.split('#', Qt::SkipEmptyParts);
+        for (const QString& token : meterTokens) {
+            const int dot = token.indexOf('.');
+            if (dot <= 0)
+                continue;
+            const int eq = token.indexOf('=', dot);
+            if (eq < 0)
+                continue;
+            bool ok = false;
+            const int idx = token.left(dot).toInt(&ok);
+            if (!ok)
+                continue;
+            grouped[idx][token.mid(dot + 1, eq - dot - 1)] = token.mid(eq + 1);
+        }
+        for (auto it = grouped.constBegin(); it != grouped.constEnd(); ++it) {
+            const auto& fields = it.value();
+            if (fields.value(QStringLiteral("src")) == QStringLiteral("SLC")
+                && fields.value(QStringLiteral("nam")) == QStringLiteral("LEVEL")) {
+                m_sMeterSliceByIndex[static_cast<quint16>(it.key())] =
+                    fields.value(QStringLiteral("num")).toInt();
+            }
+        }
+        return;
+    }
 
     // "display pan 0x<id> center=… bandwidth=…"
     if (body.startsWith(QStringLiteral("display pan "))) {

@@ -12,6 +12,7 @@ struct SpikeSlice {
     double freqMhz{0.0};
     QString mode;
     bool inUse{false};
+    double sMeterDbm{-150.0};
 };
 
 class SliceListModel : public QAbstractListModel {
@@ -22,6 +23,7 @@ public:
         SliceIdRole = Qt::UserRole + 1,
         FreqMhzRole,
         ModeRole,
+        SMeterDbmRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
@@ -32,6 +34,7 @@ public:
 
     // Apply one "slice <id> key=value ..." status body.
     void applyStatus(int sliceId, const QHash<QString, QString>& kvs);
+    void setSMeter(int sliceId, double dbm);
     void clear();
 
 private:

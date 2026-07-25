@@ -68,6 +68,7 @@ private:
     SliceListModel m_slices;
     VitaStream m_vita;
     QHash<quint32, ReplyHandler> m_pendingReplies;
+    QHash<quint16, int> m_sMeterSliceByIndex; // meter index → slice id (SLC/LEVEL)
     quint32 m_rxAudioStreamId{0};
     quint32 m_panId{0};
     double m_panCenterMhz{14.1};

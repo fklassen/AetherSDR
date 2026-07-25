@@ -48,6 +48,15 @@ adb install build/android-build/build/outputs/apk/debug/android-build-debug.apk
 Phone and radio must share a WiFi/LAN segment; the discovery list
 populates from live broadcasts within ~1 s of a radio being present.
 
+## Post-spike features (also emulator-validated)
+
+- **Manual IP connect** — text field on the discovery page footer;
+  connects to `<ip>:4992` directly. Fallback for when discovery
+  broadcasts don't arrive (harness: `adb reverse tcp:4992 tcp:4993`).
+- **Per-slice S-meter** — `sub meter all`, SLC/LEVEL meter defs mapped
+  by index, VITA PCC 0x8002 (u16 id + s16 raw pairs, dBm = raw/128),
+  shown as S-units + dBm on each slice card (S9 = −73 dBm, 6 dB/unit).
+
 ## Emulator validation (no phone / no radio)
 
 Validated 2026-07-24 on the x86_64 emulator: build the
