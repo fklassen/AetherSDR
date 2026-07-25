@@ -213,22 +213,29 @@ ApplicationWindow {
                         Layout.fillWidth: true
                         placeholderText: "Radio IP (manual connect)"
                         inputMethodHints: Qt.ImhPreferNumbers
+                        text: connection.lastManualIp
                     }
                     Button {
                         text: "Connect"
                         enabled: manualIp.text.length > 0
-                        onClicked: connection.connectToRadio(
-                                       manualIp.text, 4992,
-                                       manualIp.text)
+                        onClicked: {
+                            connection.lastManualIp = manualIp.text
+                            connection.connectToRadio(manualIp.text, 4992,
+                                                      manualIp.text)
+                        }
                     }
                 }
 
                 Label {
-                    visible: connection.state.startsWith("error")
-                             || connection.state.startsWith("connecting")
+                    // Every state except the two resting ones is worth
+                    // showing: connecting, reconnecting, lost, errors.
+                    visible: connection.state !== "disconnected"
+                             && connection.state !== "connected"
                     text: connection.state
                     padding: 12
-                    color: connection.state.startsWith("connecting") ? "#666" : "#c62828"
+                    color: connection.state.startsWith("error")
+                           || connection.state.startsWith("connection lost")
+                           ? "#c62828" : "#666"
                 }
             }
         }
@@ -361,6 +368,47 @@ ApplicationWindow {
                         color: "#9bd"
                         font.pixelSize: 12
                     }
+
+                    Row {
+                        anchors.top: parent.top
+                        anchors.right: parent.right
+                        anchors.margins: 6
+                        spacing: 6
+                        Button {
+                            text: "−"
+                            width: 44
+                            onClicked: connection.zoomPan(2.0)   // wider span
+                        }
+                        Button {
+                            text: "+"
+                            width: 44
+                            onClicked: connection.zoomPan(0.5)   // narrower span
+                        }
+                    }
+                }
+
+                // Band row — jumps slice 0 (spike scope, like strip tuning).
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    Repeater {
+                        model: [
+                            { label: "80m", freq: 3.800, mode: "LSB" },
+                            { label: "40m", freq: 7.150, mode: "LSB" },
+                            { label: "20m", freq: 14.200, mode: "USB" },
+                            { label: "17m", freq: 18.120, mode: "USB" },
+                            { label: "15m", freq: 21.300, mode: "USB" },
+                            { label: "10m", freq: 28.400, mode: "USB" },
+                        ]
+                        Button {
+                            required property var modelData
+                            Layout.fillWidth: true
+                            text: modelData.label
+                            font.pixelSize: 14
+                            onClicked: connection.bandJump(
+                                           0, modelData.freq, modelData.mode)
+                        }
+                    }
                 }
 
                 ListView {
@@ -377,6 +425,21 @@ ApplicationWindow {
                     required property double freqMhz
                     required property string mode
                     required property double sMeterDbm
+                    required property bool muted
+
+                    // Filter presets per mode family (filt low high, Hz).
+                    readonly property var filterPresets:
+                        mode === "CW"
+                        ? [{ label: "100", lo: -50, hi: 50 },
+                           { label: "400", lo: -200, hi: 200 },
+                           { label: "1k", lo: -500, hi: 500 }]
+                        : mode === "LSB"
+                        ? [{ label: "1.8k", lo: -1900, hi: -100 },
+                           { label: "2.4k", lo: -2500, hi: -100 },
+                           { label: "2.9k", lo: -3000, hi: -100 }]
+                        : [{ label: "1.8k", lo: 100, hi: 1900 },
+                           { label: "2.4k", lo: 100, hi: 2500 },
+                           { label: "2.9k", lo: 100, hi: 3000 }]
 
                     // S-units: S9 = -73 dBm, 6 dB per unit below, dB-over above.
                     function sUnits(dbm) {
@@ -439,6 +502,36 @@ ApplicationWindow {
                                     onClicked: connection.tune(
                                                    sliceCard.sliceId,
                                                    sliceCard.freqMhz + modelData.step)
+                                }
+                            }
+                        }
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 8
+                            ToolButton {
+                                text: sliceCard.muted ? "🔇" : "🔉"
+                                onClicked: connection.setMuted(
+                                               sliceCard.sliceId,
+                                               !sliceCard.muted)
+                            }
+                            Slider {
+                                id: volume
+                                Layout.fillWidth: true
+                                from: 0; to: 100; value: 50
+                                onMoved: connection.setVolume(
+                                             sliceCard.sliceId,
+                                             Math.round(value))
+                            }
+                            Repeater {
+                                model: sliceCard.filterPresets
+                                Button {
+                                    required property var modelData
+                                    text: modelData.label
+                                    font.pixelSize: 13
+                                    onClicked: connection.setFilter(
+                                                   sliceCard.sliceId,
+                                                   modelData.lo, modelData.hi)
                                 }
                             }
                         }

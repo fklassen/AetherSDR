@@ -15,6 +15,7 @@ QVariant SliceListModel::data(const QModelIndex& index, int role) const
     case FreqMhzRole: return s.freqMhz;
     case ModeRole:    return s.mode;
     case SMeterDbmRole: return s.sMeterDbm;
+    case MutedRole: return s.muted;
     }
     return {};
 }
@@ -26,6 +27,7 @@ QHash<int, QByteArray> SliceListModel::roleNames() const
         {FreqMhzRole, "freqMhz"},
         {ModeRole, "mode"},
         {SMeterDbmRole, "sMeterDbm"},
+        {MutedRole, "muted"},
     };
 }
 
@@ -68,6 +70,8 @@ void SliceListModel::applyStatus(int sliceId, const QHash<QString, QString>& kvs
         s.mode = kvs.value("mode");
     if (kvs.contains("in_use"))
         s.inUse = kvs.value("in_use") == "1";
+    if (kvs.contains("audio_mute"))
+        s.muted = kvs.value("audio_mute") == "1";
 
     const QModelIndex idx = index(row);
     emit dataChanged(idx, idx);

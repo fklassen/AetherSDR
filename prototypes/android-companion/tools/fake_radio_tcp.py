@@ -70,8 +70,10 @@ def audio_sender(stop_event, opus=False):
         time.sleep(period)
 
 slices = {
-    0: {"in_use": 1, "RF_frequency": 14.074000, "mode": "USB"},
-    1: {"in_use": 1, "RF_frequency": 7.155000, "mode": "LSB"},
+    0: {"in_use": 1, "RF_frequency": 14.074000, "mode": "USB",
+        "audio_mute": 0, "audio_level": 50, "filter_lo": 100, "filter_hi": 2500},
+    1: {"in_use": 1, "RF_frequency": 7.155000, "mode": "LSB",
+        "audio_mute": 0, "audio_level": 50, "filter_lo": -2500, "filter_hi": -100},
 }
 
 
@@ -192,7 +194,9 @@ def fft_sender(stop_event):
 def slice_status(sid):
     s = slices[sid]
     return (f"S{HANDLE}|slice {sid} in_use={s['in_use']} "
-            f"RF_frequency={s['RF_frequency']:.6f} mode={s['mode']}\n")
+            f"RF_frequency={s['RF_frequency']:.6f} mode={s['mode']} "
+            f"audio_mute={s['audio_mute']} audio_level={s['audio_level']} "
+            f"filter_lo={s['filter_lo']} filter_hi={s['filter_hi']}\n")
 
 
 def serve(conn, addr):
@@ -267,6 +271,13 @@ def serve(conn, addr):
                     k, _, v = kv.partition("=")
                     if k == "mode":
                         slices[sid]["mode"] = v
+                    elif k in ("audio_mute", "audio_level"):
+                        slices[sid][k] = int(v)
+                conn.sendall(slice_status(sid).encode())
+            elif parts[0] == "filt" and len(parts) >= 4:
+                sid = int(parts[1])
+                slices[sid]["filter_lo"] = int(parts[2])
+                slices[sid]["filter_hi"] = int(parts[3])
                 conn.sendall(slice_status(sid).encode())
     audio_stop.set()
     print("client disconnected", flush=True)

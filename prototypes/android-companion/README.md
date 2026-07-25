@@ -67,6 +67,16 @@ populates from live broadcasts within ~1 s of a radio being present.
   opus (venv + `pip install opuslib`, needs a host libopus, e.g.
   `DYLD_LIBRARY_PATH=/usr/local/opt/opus/lib`); PCM mode needs neither.
 
+- **Operator polish** — LAN auto-reconnect (2/5/10/10/10 s backoff, five
+  attempts; WAN never retries because the broker handle goes stale, and
+  user-initiated disconnects never retry), pan zoom (`display pan set
+  bandwidth=`), band buttons (80/40/20/17/15/10 m → tune + mode),
+  per-mode filter presets (`filt <id> <lo> <hi>`), per-slice volume
+  (`audio_level`) and mute (`audio_mute`), and small settings
+  persistence (last manual IP, Opus preference). **Note for any
+  graduation:** persistence here uses `QSettings` for spike
+  convenience; `AGENTS.md` bans `QSettings` in the main tree, so an
+  in-tree version must use the project's client-persistence layer.
 - **Waterfall** — VITA PCC 0x8004 tiles (36-byte subheader:
   VitaFrequency i64 lowFreq/binBw at Hz·2²⁰, width/height, timecode,
   autoBlack, totalBins/firstBin; u16 BE bins, dBm = int16/128;

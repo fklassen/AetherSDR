@@ -28,7 +28,22 @@ void setForegroundService(bool on)
 ConnectionModel::ConnectionModel(QObject* parent)
     : QObject(parent)
 {
+    m_opusEnabled = m_settings.value(QStringLiteral("opusEnabled"), false).toBool();
+    m_lastManualIp = m_settings.value(QStringLiteral("lastManualIp")).toString();
+
+    m_reconnectTimer.setSingleShot(true);
+    connect(&m_reconnectTimer, &QTimer::timeout, this, [this] {
+        if (m_lastHost.isEmpty())
+            return;
+        setState(QStringLiteral("reconnecting (attempt %1)")
+                     .arg(m_reconnectAttempt));
+        m_rxBuffer.clear();
+        m_seq = 1;
+        m_socket.connectToHost(m_lastHost, static_cast<quint16>(m_lastPort));
+    });
+
     const auto onLinkUp = [this] {
+        m_reconnectAttempt = 0;
         setState("connected");
         // Non-GUI registration + subscriptions (RadioModel.cpp order,
         // minus "client gui" — see header comment). One VITA socket for
@@ -79,14 +94,35 @@ ConnectionModel::ConnectionModel(QObject* parent)
         m_slices.clear();
         emit panChanged();
     };
-    connect(&m_socket, &QSslSocket::disconnected, this, [this, teardown] {
-        teardown();
-        setState("disconnected");
-    });
-    connect(&m_socket, &QSslSocket::errorOccurred, this, [this, teardown](auto) {
-        teardown();
-        setState("error: " + m_socket.errorString());
-    });
+    // Unexpected LAN drops retry with backoff (2/5/10/10/10 s); WAN
+    // handles go stale on disconnect, so WAN never auto-retries. User
+    // disconnects never retry.
+    const auto maybeReconnect = [this] {
+        if (m_userDisconnect || m_wanMode || m_lastHost.isEmpty())
+            return false;
+        if (m_reconnectAttempt >= 5)
+            return false;
+        static constexpr int kDelaysMs[] = {2000, 5000, 10000, 10000, 10000};
+        m_reconnectTimer.start(kDelaysMs[m_reconnectAttempt]);
+        ++m_reconnectAttempt;
+        return true;
+    };
+    connect(&m_socket, &QSslSocket::disconnected, this,
+            [this, teardown, maybeReconnect] {
+                teardown();
+                if (maybeReconnect())
+                    setState("connection lost — retrying");
+                else
+                    setState("disconnected");
+            });
+    connect(&m_socket, &QSslSocket::errorOccurred, this,
+            [this, teardown, maybeReconnect](auto) {
+                teardown();
+                if (maybeReconnect())
+                    setState("connection lost — retrying");
+                else
+                    setState("error: " + m_socket.errorString());
+            });
     connect(&m_socket, &QSslSocket::readyRead, this, &ConnectionModel::onReadyRead);
 }
 
@@ -103,6 +139,11 @@ void ConnectionModel::connectToRadio(const QString& host, int port,
         m_socket.abort();
     m_wanMode = false;
     m_wanHandle.clear();
+    m_userDisconnect = false;
+    m_reconnectAttempt = 0;
+    m_lastHost = host;
+    m_lastPort = port;
+    m_lastLabel = label;
     m_radioLabel = label;
     m_rxBuffer.clear();
     m_seq = 1;
@@ -126,6 +167,8 @@ void ConnectionModel::connectWan(const QString& host, int tlsPort,
 
 void ConnectionModel::disconnectFromRadio()
 {
+    m_userDisconnect = true;
+    m_reconnectTimer.stop();
     m_socket.disconnectFromHost();
     if (m_socket.state() != QAbstractSocket::UnconnectedState)
         m_socket.abort();
@@ -146,7 +189,51 @@ void ConnectionModel::setOpusEnabled(bool on)
     if (m_opusEnabled == on)
         return;
     m_opusEnabled = on;
+    m_settings.setValue(QStringLiteral("opusEnabled"), on);
     emit opusEnabledChanged();
+}
+
+void ConnectionModel::setLastManualIp(const QString& ip)
+{
+    if (m_lastManualIp == ip)
+        return;
+    m_lastManualIp = ip;
+    m_settings.setValue(QStringLiteral("lastManualIp"), ip);
+    emit lastManualIpChanged();
+}
+
+void ConnectionModel::setFilter(int sliceId, int lowHz, int highHz)
+{
+    sendCommand(QStringLiteral("filt %1 %2 %3")
+                    .arg(sliceId).arg(lowHz).arg(highHz));
+}
+
+void ConnectionModel::setVolume(int sliceId, int level)
+{
+    sendCommand(QStringLiteral("slice set %1 audio_level=%2")
+                    .arg(sliceId).arg(qBound(0, level, 100)));
+}
+
+void ConnectionModel::setMuted(int sliceId, bool muted)
+{
+    sendCommand(QStringLiteral("slice set %1 audio_mute=%2")
+                    .arg(sliceId).arg(muted ? 1 : 0));
+}
+
+void ConnectionModel::bandJump(int sliceId, double freqMhz, const QString& mode)
+{
+    tune(sliceId, freqMhz);
+    setMode(sliceId, mode);
+}
+
+void ConnectionModel::zoomPan(double factor)
+{
+    if (m_panId == 0)
+        return;
+    const double bw = qBound(0.01, m_panBandwidthMhz * factor, 14.0);
+    sendCommand(QStringLiteral("display pan set 0x%1 bandwidth=%2")
+                    .arg(m_panId, 8, 16, QChar('0'))
+                    .arg(bw, 0, 'f', 6));
 }
 
 void ConnectionModel::startRxAudio()

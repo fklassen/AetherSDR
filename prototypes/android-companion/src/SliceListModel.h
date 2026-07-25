@@ -12,6 +12,7 @@ struct SpikeSlice {
     double freqMhz{0.0};
     QString mode;
     bool inUse{false};
+    bool muted{false};
     double sMeterDbm{-150.0};
 };
 
@@ -24,6 +25,7 @@ public:
         FreqMhzRole,
         ModeRole,
         SMeterDbmRole,
+        MutedRole,
     };
 
     using QAbstractListModel::QAbstractListModel;
