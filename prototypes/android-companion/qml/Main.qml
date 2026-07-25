@@ -126,7 +126,24 @@ ApplicationWindow {
                         elide: Text.ElideRight
                         Layout.fillWidth: true
                     }
+                    ToolButton {
+                        text: connection.rxAudio.active ? "🔊" : "🔇"
+                        font.pixelSize: 20
+                        onClicked: connection.rxAudio.active
+                                   ? connection.stopRxAudio()
+                                   : connection.startRxAudio()
+                    }
                 }
+            }
+
+            footer: Label {
+                visible: connection.rxAudio.active
+                padding: 8
+                font.pixelSize: 13
+                opacity: 0.7
+                text: "RX audio: " + connection.rxAudio.packetsReceived
+                      + " pkts · " + (connection.rxAudio.bytesPlayed / 1024).toFixed(0)
+                      + " KiB played"
             }
 
             ListView {

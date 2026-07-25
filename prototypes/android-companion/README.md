@@ -15,11 +15,11 @@ not link `aethercore`**, root build untouched.
 | 1 | ✅ Qt 6.11 for Android builds + deploys a C++20 Qt Quick APK |
 | 2 | ✅* SmartSDR UDP :4992 discovery broadcast reception on Android WiFi (MulticastLock) |
 | 3 | ✅ TCP :4992 command channel + slice tune from touch UI |
-| 4 | RX audio via Qt Multimedia (AAudio) at usable latency |
+| 4 | ✅* RX audio via Qt Multimedia (AAudio) at usable latency |
 | 5 | FFT packet ingest → drag-to-tune spectrum strip in Quick |
 | 6 | Foreground service; RX survives screen lock |
 
-Phases 1–3 are in this tree (\* = emulator-validated; real-phone WiFi
+Phases 1–4 are in this tree (\* = emulator-validated; real-phone
 sign-off pending hardware). Protocol facts mirror
 `src/core/RadioDiscovery.{h,cpp}`, `src/core/CommandParser.cpp`, and the
 `client program` / `sub slice all` init order in
@@ -77,6 +77,16 @@ radio card → slice cards appear; step buttons round-trip
 `slice tune` through the server and the UI updates from the status
 broadcast.
 
-Emulator proves parse + model + UI only. Still phone-only: real WiFi
-broadcast delivery / MulticastLock behavior (spike phase 2 sign-off)
-— untested until Android hardware is available.
+Phase-4 audio: the fake server answers
+`stream create type=remote_audio_rx compression=none` with a stream id
+and streams 600 Hz sine VITA packets (PCC 0x03E3, float32 stereo BE,
+24 kHz, 256 samples/packet). The app binds UDP 14993
+(`RxAudioStream::kLocalPort`); map it with
+`adb emu redir add udp:24993:14993` and point the sender at host
+port 24993. Toggle the speaker button on the slice page — the footer
+counts packets/KiB fed to QAudioSink.
+
+Emulator proves parse + model + UI + sink consumption only. Still
+phone-only: real WiFi broadcast delivery / MulticastLock (phase 2
+sign-off), audible output + AAudio latency (phase 4 sign-off) —
+untested until Android hardware is available.

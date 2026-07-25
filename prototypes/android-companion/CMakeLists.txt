@@ -8,7 +8,7 @@ project(AetherCompanionSpike VERSION 0.1 LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Qml Quick Network Multimedia)
 
 qt_standard_project_setup(REQUIRES 6.5)
 
@@ -18,6 +18,8 @@ qt_add_executable(aethercompanion
     src/ConnectionModel.h
     src/DiscoveryModel.cpp
     src/DiscoveryModel.h
+    src/RxAudioStream.cpp
+    src/RxAudioStream.h
     src/SliceListModel.cpp
     src/SliceListModel.h
 )
@@ -41,4 +43,5 @@ target_link_libraries(aethercompanion PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::Network
+    Qt6::Multimedia
 )

@@ -11,10 +11,16 @@ ConnectionModel::ConnectionModel(QObject* parent)
         sendCommand("sub slice all");
     });
     connect(&m_socket, &QTcpSocket::disconnected, this, [this] {
+        m_rxAudio.stop();
+        m_rxAudioStreamId = 0;
+        m_pendingReplies.clear();
         m_slices.clear();
         setState("disconnected");
     });
     connect(&m_socket, &QTcpSocket::errorOccurred, this, [this](auto) {
+        m_rxAudio.stop();
+        m_rxAudioStreamId = 0;
+        m_pendingReplies.clear();
         m_slices.clear();
         setState("error: " + m_socket.errorString());
     });
@@ -46,11 +52,43 @@ void ConnectionModel::disconnectFromRadio()
         m_socket.abort();
 }
 
-void ConnectionModel::sendCommand(const QString& command)
+void ConnectionModel::sendCommand(const QString& command, ReplyHandler onReply)
 {
     if (m_socket.state() != QAbstractSocket::ConnectedState)
         return;
-    m_socket.write(QStringLiteral("C%1|%2\n").arg(m_seq++).arg(command).toUtf8());
+    const quint32 seq = m_seq++;
+    if (onReply)
+        m_pendingReplies.insert(seq, std::move(onReply));
+    m_socket.write(QStringLiteral("C%1|%2\n").arg(seq).arg(command).toUtf8());
+}
+
+void ConnectionModel::startRxAudio()
+{
+    if (m_rxAudio.active())
+        return;
+    // Uncompressed stream (spike scope; desktop uses Opus on WAN only).
+    sendCommand(QStringLiteral("stream create type=remote_audio_rx compression=none"),
+                [this](int code, const QString& body) {
+                    if (code != 0)
+                        return;
+                    // Reply body is the stream id (hex, with or without 0x).
+                    bool ok = false;
+                    const quint32 id = body.trimmed().toUInt(&ok, 16);
+                    if (!ok || id == 0)
+                        return;
+                    m_rxAudioStreamId = id;
+                    m_rxAudio.start(id, QHostAddress(m_socket.peerAddress()));
+                });
+}
+
+void ConnectionModel::stopRxAudio()
+{
+    m_rxAudio.stop();
+    if (m_rxAudioStreamId != 0) {
+        sendCommand(QStringLiteral("stream remove 0x%1")
+                        .arg(m_rxAudioStreamId, 8, 16, QChar('0')));
+        m_rxAudioStreamId = 0;
+    }
 }
 
 void ConnectionModel::tune(int sliceId, double freqMhz)
@@ -80,7 +118,23 @@ void ConnectionModel::onReadyRead()
 
 void ConnectionModel::handleLine(const QString& line)
 {
-    // Only S (status) lines matter to the spike; V/H/R/M are accepted and
+    // R<seq>|<hexcode>|<body> — dispatch to the pending-reply handler.
+    if (line[0] == 'R') {
+        const QStringList parts = line.mid(1).split('|');
+        if (parts.size() < 2)
+            return;
+        const quint32 seq = parts[0].toUInt();
+        const auto it = m_pendingReplies.find(seq);
+        if (it == m_pendingReplies.end())
+            return;
+        const ReplyHandler handler = std::move(it.value());
+        m_pendingReplies.erase(it);
+        handler(parts[1].toInt(nullptr, 16),
+                parts.size() >= 3 ? parts[2] : QString());
+        return;
+    }
+
+    // S (status) lines drive the slice model; V/H/M are accepted and
     // dropped. Status body: "<topic> ..." after "S<handle>|".
     if (line[0] != 'S')
         return;
