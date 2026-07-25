@@ -67,6 +67,26 @@ populates from live broadcasts within ~1 s of a radio being present.
   opus (venv + `pip install opuslib`, needs a host libopus, e.g.
   `DYLD_LIBRARY_PATH=/usr/local/opt/opus/lib`); PCM mode needs neither.
 
+- **SmartLink (WAN)** — Auth0 ROPC login (facts per
+  `src/core/SmartLinkClient.{h,cpp}`: password-realm grant, public
+  client id, `offline_access` scope), TLS broker line protocol
+  (`application register token=<jwt>` → radio list → `application
+  connect serial=… hole_punch_port=…` → `radio connect_ready
+  handle=…`), then TLS to the radio's public ip/port with
+  `wan validate handle=<h>` as the first command (per
+  `src/core/WanConnection.cpp`). Requires
+  `tools/setup-openssl-android.sh` once (KDAB android_openssl
+  prebuilts — Qt on Android has no TLS backend without them).
+  Spike security posture: no credential persistence, tokens in memory
+  only; radio/broker certs are trust-on-connect **only** in harness
+  mode / WAN spike — desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2)
+  and that is a must-fix before graduation. Emulator harness:
+  `tools/fake_smartlink.py` (self-signed TLS broker :14443 + TLS radio
+  front :14994 proxying to `fake_radio_tcp.py`); enter
+  `127.0.0.1:14443` in the SmartLink email field (harness mode skips
+  Auth0). Real-account + real-radio WAN sign-off pending, alongside
+  the phone list.
+
 ## Emulator validation (no phone / no radio)
 
 Validated 2026-07-24 on the x86_64 emulator: build the

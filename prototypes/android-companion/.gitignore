@@ -2,3 +2,4 @@ build/
 build-*/
 aqtinstall.log
 third_party/
+tools/.harness-certs/

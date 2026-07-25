@@ -103,6 +103,107 @@ ApplicationWindow {
             footer: ColumnLayout {
                 spacing: 0
 
+                // SmartLink (WAN) — login + remote radio list.
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.margins: 12
+                    spacing: 8
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        visible: !smartLink.loggedIn
+                        TextField {
+                            id: slEmail
+                            Layout.fillWidth: true
+                            placeholderText: "SmartLink email (or harness host:port)"
+                            inputMethodHints: Qt.ImhEmailCharactersOnly
+                        }
+                        TextField {
+                            id: slPassword
+                            Layout.fillWidth: true
+                            placeholderText: "Password"
+                            echoMode: TextInput.Password
+                        }
+                        Button {
+                            text: "Login"
+                            enabled: slEmail.text.length > 0
+                            // Harness mode: "host:port" in the email field,
+                            // empty password → local TLS broker, no Auth0.
+                            onClicked: slEmail.text.indexOf(":") >= 0
+                                       ? smartLink.login("", "", slEmail.text)
+                                       : smartLink.login(slEmail.text,
+                                                         slPassword.text)
+                        }
+                    }
+
+                    RowLayout {
+                        visible: smartLink.loggedIn
+                        Layout.fillWidth: true
+                        Label {
+                            text: "SmartLink: " + smartLink.authState
+                            font.pixelSize: 13
+                            opacity: 0.7
+                            Layout.fillWidth: true
+                        }
+                        Button {
+                            text: "Logout"
+                            onClicked: smartLink.logout()
+                        }
+                    }
+
+                    Label {
+                        visible: smartLink.authState.indexOf("failed") >= 0
+                                 || smartLink.authState.indexOf("error") >= 0
+                        text: smartLink.authState
+                        color: "#c62828"
+                        font.pixelSize: 13
+                    }
+
+                    Repeater {
+                        model: smartLink
+                        delegate: Frame {
+                            id: wanCard
+                            Layout.fillWidth: true
+
+                            required property int index
+                            required property string radioModel
+                            required property string nickname
+                            required property string callsign
+                            required property string status
+                            required property string serial
+
+                            RowLayout {
+                                anchors.fill: parent
+                                ColumnLayout {
+                                    spacing: 2
+                                    Layout.fillWidth: true
+                                    Label {
+                                        text: wanCard.radioModel
+                                              + (wanCard.nickname
+                                                 ? "  ·  " + wanCard.nickname : "")
+                                              + "   (SmartLink)"
+                                        font.pixelSize: 16
+                                        font.bold: true
+                                    }
+                                    Label {
+                                        text: (wanCard.callsign
+                                               ? wanCard.callsign + "  ·  " : "")
+                                              + wanCard.status
+                                        font.pixelSize: 13
+                                        opacity: 0.7
+                                    }
+                                }
+                                Button {
+                                    text: "Connect"
+                                    onClicked: smartLink.requestConnect(
+                                                   wanCard.index, 14993)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     Layout.margins: 12
@@ -124,10 +225,10 @@ ApplicationWindow {
 
                 Label {
                     visible: connection.state.startsWith("error")
-                             || connection.state === "connecting"
+                             || connection.state.startsWith("connecting")
                     text: connection.state
                     padding: 12
-                    color: connection.state === "connecting" ? "#666" : "#c62828"
+                    color: connection.state.startsWith("connecting") ? "#666" : "#c62828"
                 }
             }
         }

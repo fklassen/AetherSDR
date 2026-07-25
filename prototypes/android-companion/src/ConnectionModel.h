@@ -11,7 +11,7 @@
 
 #include <QHash>
 #include <QObject>
-#include <QTcpSocket>
+#include <QSslSocket>
 
 #include <functional>
 
@@ -44,6 +44,12 @@ public:
 
     Q_INVOKABLE void connectToRadio(const QString& host, int port,
                                     const QString& label);
+    // SmartLink WAN: TLS connect + "wan validate handle=<h>" handshake
+    // (WanConnection facts). Spike accepts the radio's self-signed cert
+    // blindly — desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2); noted
+    // as a must-fix before any graduation.
+    Q_INVOKABLE void connectWan(const QString& host, int tlsPort,
+                                const QString& wanHandle, const QString& label);
     Q_INVOKABLE void disconnectFromRadio();
 
     Q_INVOKABLE void tune(int sliceId, double freqMhz);
@@ -68,7 +74,9 @@ private:
     void onReadyRead();
     void handleLine(const QString& line);
 
-    QTcpSocket m_socket;
+    QSslSocket m_socket; // plain mode for LAN, encrypted for WAN
+    bool m_wanMode{false};
+    QString m_wanHandle;
     SliceListModel m_slices;
     VitaStream m_vita;
     QHash<quint32, ReplyHandler> m_pendingReplies;

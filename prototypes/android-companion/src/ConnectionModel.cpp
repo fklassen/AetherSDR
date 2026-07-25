@@ -28,17 +28,39 @@ void setForegroundService(bool on)
 ConnectionModel::ConnectionModel(QObject* parent)
     : QObject(parent)
 {
-    connect(&m_socket, &QTcpSocket::connected, this, [this] {
+    const auto onLinkUp = [this] {
         setState("connected");
         // Non-GUI registration + subscriptions (RadioModel.cpp order,
         // minus "client gui" — see header comment). One VITA socket for
         // audio + FFT, opened for the connection's lifetime.
         m_vita.openSocket(QHostAddress(m_socket.peerAddress()));
+        // WAN sessions authenticate first (WanConnection: "wan validate
+        // handle=<h>" is the very first command on the wire).
+        if (m_wanMode)
+            sendCommand(QStringLiteral("wan validate handle=%1").arg(m_wanHandle));
         sendCommand("client program AetherCompanion");
         sendCommand("sub slice all");
         sendCommand("sub pan all");
         sendCommand("sub meter all");
+    };
+    // Plain LAN sockets signal connected; TLS WAN sockets are usable
+    // only once encrypted.
+    connect(&m_socket, &QSslSocket::connected, this, [this, onLinkUp] {
+        if (!m_wanMode)
+            onLinkUp();
     });
+    connect(&m_socket, &QSslSocket::encrypted, this, [this, onLinkUp] {
+        if (m_wanMode)
+            onLinkUp();
+    });
+    connect(&m_socket, &QSslSocket::sslErrors, this,
+            [this](const QList<QSslError>& errors) {
+                // Spike-grade trust-on-connect for the radio's self-signed
+                // cert. Desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2);
+                // required before any graduation from prototypes/.
+                if (m_wanMode)
+                    m_socket.ignoreSslErrors(errors);
+            });
     connect(&m_vita, &VitaStream::meterData, this,
             [this](const QVector<quint16>& ids, const QVector<qint16>& values) {
                 for (int i = 0; i < ids.size(); ++i) {
@@ -57,15 +79,15 @@ ConnectionModel::ConnectionModel(QObject* parent)
         m_slices.clear();
         emit panChanged();
     };
-    connect(&m_socket, &QTcpSocket::disconnected, this, [this, teardown] {
+    connect(&m_socket, &QSslSocket::disconnected, this, [this, teardown] {
         teardown();
         setState("disconnected");
     });
-    connect(&m_socket, &QTcpSocket::errorOccurred, this, [this, teardown](auto) {
+    connect(&m_socket, &QSslSocket::errorOccurred, this, [this, teardown](auto) {
         teardown();
         setState("error: " + m_socket.errorString());
     });
-    connect(&m_socket, &QTcpSocket::readyRead, this, &ConnectionModel::onReadyRead);
+    connect(&m_socket, &QSslSocket::readyRead, this, &ConnectionModel::onReadyRead);
 }
 
 void ConnectionModel::setState(const QString& state)
@@ -79,11 +101,27 @@ void ConnectionModel::connectToRadio(const QString& host, int port,
 {
     if (m_socket.state() != QAbstractSocket::UnconnectedState)
         m_socket.abort();
+    m_wanMode = false;
+    m_wanHandle.clear();
     m_radioLabel = label;
     m_rxBuffer.clear();
     m_seq = 1;
     setState("connecting");
     m_socket.connectToHost(host, static_cast<quint16>(port));
+}
+
+void ConnectionModel::connectWan(const QString& host, int tlsPort,
+                                 const QString& wanHandle, const QString& label)
+{
+    if (m_socket.state() != QAbstractSocket::UnconnectedState)
+        m_socket.abort();
+    m_wanMode = true;
+    m_wanHandle = wanHandle;
+    m_radioLabel = label + " (WAN)";
+    m_rxBuffer.clear();
+    m_seq = 1;
+    setState("connecting (WAN TLS)");
+    m_socket.connectToHostEncrypted(host, static_cast<quint16>(tlsPort));
 }
 
 void ConnectionModel::disconnectFromRadio()

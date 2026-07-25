@@ -24,6 +24,8 @@ qt_add_executable(aethercompanion
     src/VitaStream.h
     src/SliceListModel.cpp
     src/SliceListModel.h
+    src/SmartLinkModel.cpp
+    src/SmartLinkModel.h
 )
 
 qt_add_qml_module(aethercompanion
@@ -38,6 +40,18 @@ qt_add_qml_module(aethercompanion
 
 # The generated QML type registration includes <SpectrumStrip.h>.
 target_include_directories(aethercompanion PRIVATE src)
+
+# OpenSSL for QSslSocket (run tools/setup-openssl-android.sh before
+# cmake) — Qt on Android has no TLS backend without bundled libs.
+set(_ssl_root "${CMAKE_CURRENT_SOURCE_DIR}/third_party/android_openssl/ssl_3/${ANDROID_ABI}")
+if(EXISTS "${_ssl_root}/libssl_3.so")
+    set_property(TARGET aethercompanion APPEND PROPERTY QT_ANDROID_EXTRA_LIBS
+        "${_ssl_root}/libssl_3.so"
+        "${_ssl_root}/libcrypto_3.so")
+    message(STATUS "Android OpenSSL bundled (${_ssl_root})")
+else()
+    message(STATUS "Android OpenSSL missing — TLS (SmartLink) will fail; run tools/setup-openssl-android.sh")
+endif()
 
 # Optional libopus (run tools/setup-opus-android.sh before cmake).
 # Auto-detects per-ABI like the main tree's DFNR setup pattern.
