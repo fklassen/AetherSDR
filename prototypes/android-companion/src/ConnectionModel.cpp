@@ -1,5 +1,30 @@
 #include "ConnectionModel.h"
 
+#ifdef Q_OS_ANDROID
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
+
+namespace {
+
+// Foreground service keeps RX audio + the VITA socket alive while the
+// screen is off (phase 6). No-op off Android.
+void setForegroundService(bool on)
+{
+#ifdef Q_OS_ANDROID
+    QJniObject context = QNativeInterface::QAndroidApplication::context();
+    QJniObject::callStaticMethod<void>(
+        "org/aethersdr/companion/RxForegroundService",
+        on ? "start" : "stop",
+        "(Landroid/content/Context;)V",
+        context.object());
+#else
+    Q_UNUSED(on);
+#endif
+}
+
+} // namespace
+
 ConnectionModel::ConnectionModel(QObject* parent)
     : QObject(parent)
 {
@@ -14,6 +39,7 @@ ConnectionModel::ConnectionModel(QObject* parent)
         sendCommand("sub pan all");
     });
     const auto teardown = [this] {
+        setForegroundService(false);
         m_vita.closeSocket();
         m_rxAudioStreamId = 0;
         m_panId = 0;
@@ -83,11 +109,13 @@ void ConnectionModel::startRxAudio()
                         return;
                     m_rxAudioStreamId = id;
                     m_vita.setAudioStream(id);
+                    setForegroundService(true);
                 });
 }
 
 void ConnectionModel::stopRxAudio()
 {
+    setForegroundService(false);
     m_vita.clearAudioStream();
     if (m_rxAudioStreamId != 0) {
         sendCommand(QStringLiteral("stream remove 0x%1")

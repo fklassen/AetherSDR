@@ -17,9 +17,9 @@ not link `aethercore`**, root build untouched.
 | 3 | ✅ TCP :4992 command channel + slice tune from touch UI |
 | 4 | ✅* RX audio via Qt Multimedia (AAudio) at usable latency |
 | 5 | ✅* FFT packet ingest → drag-to-tune spectrum strip in Quick |
-| 6 | Foreground service; RX survives screen lock |
+| 6 | ✅* Foreground service; RX survives screen lock |
 
-Phases 1–5 are in this tree (\* = emulator-validated; real-phone
+All six phases are in this tree (\* = emulator-validated; real-phone
 sign-off pending hardware). Protocol facts mirror
 `src/core/RadioDiscovery.{h,cpp}`, `src/core/CommandParser.cpp`, and the
 `client program` / `sub slice all` init order in
@@ -95,8 +95,16 @@ the strip renders at ~20 fps; tap/drag on it computes
 `center − bw/2 + x/width·bw` and round-trips `slice tune`, moving both
 the slice card and the peak.
 
-Emulator proves parse + model + UI + sink consumption only. Still
-phone-only: real WiFi broadcast delivery / MulticastLock (phase 2
-sign-off), audible output + AAudio latency (phase 4 sign-off), touch
-drag feel on real glass (phase 5 sign-off) — untested until Android
-hardware is available.
+Phase-6 background survival: starting RX audio starts
+`RxForegroundService` (Java, `android/src/…`) via JNI — a
+mediaPlayback-type foreground service holding a partial wake lock and
+a high-perf WiFi lock. Verified in the emulator with
+`dumpsys activity services` (`isForeground=true`, type 0x2) and by the
+packet counter climbing 615 packets across a 45 s `KEYCODE_SLEEP`
+screen-off interval.
+
+Emulator proves parse + model + UI + sink consumption + screen-off
+survival only. Still phone-only: real WiFi broadcast delivery /
+MulticastLock (phase 2 sign-off), audible output + AAudio latency
+(phase 4), touch drag feel (phase 5), Doze/OEM battery-killer behavior
+over hours (phase 6) — untested until Android hardware is available.

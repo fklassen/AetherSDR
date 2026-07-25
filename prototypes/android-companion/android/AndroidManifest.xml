@@ -9,6 +9,10 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
 
     <application android:name="org.qtproject.qt.android.bindings.QtApplication"
                  android:label="Aether Companion"
@@ -32,5 +36,9 @@
             <meta-data android:name="android.app.extract_android_style"
                        android:value="minimal"/>
         </activity>
+
+        <service android:name="org.aethersdr.companion.RxForegroundService"
+                 android:foregroundServiceType="mediaPlayback"
+                 android:exported="false"/>
     </application>
 </manifest>
