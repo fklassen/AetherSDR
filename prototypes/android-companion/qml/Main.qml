@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import AetherCompanion
 
 ApplicationWindow {
     id: root
@@ -127,9 +128,16 @@ ApplicationWindow {
                         Layout.fillWidth: true
                     }
                     ToolButton {
-                        text: connection.rxAudio.active ? "🔊" : "🔇"
+                        text: connection.spectrumActive ? "📈" : "📉"
                         font.pixelSize: 20
-                        onClicked: connection.rxAudio.active
+                        onClicked: connection.spectrumActive
+                                   ? connection.stopSpectrum()
+                                   : connection.startSpectrum()
+                    }
+                    ToolButton {
+                        text: connection.vita.audioActive ? "🔊" : "🔇"
+                        font.pixelSize: 20
+                        onClicked: connection.vita.audioActive
                                    ? connection.stopRxAudio()
                                    : connection.startRxAudio()
                     }
@@ -137,20 +145,73 @@ ApplicationWindow {
             }
 
             footer: Label {
-                visible: connection.rxAudio.active
+                visible: connection.vita.audioActive
                 padding: 8
                 font.pixelSize: 13
                 opacity: 0.7
-                text: "RX audio: " + connection.rxAudio.packetsReceived
-                      + " pkts · " + (connection.rxAudio.bytesPlayed / 1024).toFixed(0)
+                text: "RX audio: " + connection.vita.packetsReceived
+                      + " pkts · " + (connection.vita.bytesPlayed / 1024).toFixed(0)
                       + " KiB played"
             }
 
-            ListView {
+            ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 12
                 spacing: 12
-                model: connection.slices
+
+                Item {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: connection.spectrumActive ? 160 : 0
+                    visible: connection.spectrumActive
+                    clip: true
+
+                    SpectrumStrip {
+                        id: strip
+                        anchors.fill: parent
+                        yScale: 200
+
+                        Connections {
+                            target: connection.vita
+                            function onFftFrame(bins) { strip.setFrame(bins) }
+                        }
+
+                        // Tap or drag anywhere on the strip tunes slice 0
+                        // (spike scope: first slice).
+                        function freqAt(x) {
+                            return connection.panCenterMhz
+                                   - connection.panBandwidthMhz / 2
+                                   + (x / width) * connection.panBandwidthMhz
+                        }
+
+                        TapHandler {
+                            onTapped: (eventPoint) =>
+                                connection.tune(0, strip.freqAt(eventPoint.position.x))
+                        }
+                        DragHandler {
+                            target: null
+                            onCentroidChanged: {
+                                if (active)
+                                    connection.tune(0, strip.freqAt(centroid.position.x))
+                            }
+                        }
+                    }
+
+                    Label {
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.margins: 6
+                        text: connection.panCenterMhz.toFixed(3) + " MHz ± "
+                              + (connection.panBandwidthMhz * 500).toFixed(0) + " kHz"
+                        color: "#9bd"
+                        font.pixelSize: 12
+                    }
+                }
+
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 12
+                    model: connection.slices
 
                 delegate: Frame {
                     id: sliceCard
@@ -211,12 +272,13 @@ ApplicationWindow {
                     }
                 }
 
-                Label {
-                    anchors.centerIn: parent
-                    visible: parent.count === 0
-                    text: "Connected — waiting for slice status…"
-                    opacity: 0.6
-                    font.pixelSize: 16
+                    Label {
+                        anchors.centerIn: parent
+                        visible: parent.count === 0
+                        text: "Connected — waiting for slice status…"
+                        opacity: 0.6
+                        font.pixelSize: 16
+                    }
                 }
             }
         }

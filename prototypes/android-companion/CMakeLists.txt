@@ -18,8 +18,10 @@ qt_add_executable(aethercompanion
     src/ConnectionModel.h
     src/DiscoveryModel.cpp
     src/DiscoveryModel.h
-    src/RxAudioStream.cpp
-    src/RxAudioStream.h
+    src/SpectrumStrip.cpp
+    src/SpectrumStrip.h
+    src/VitaStream.cpp
+    src/VitaStream.h
     src/SliceListModel.cpp
     src/SliceListModel.h
 )
@@ -29,7 +31,13 @@ qt_add_qml_module(aethercompanion
     VERSION 1.0
     QML_FILES
         qml/Main.qml
+    SOURCES
+        src/SpectrumStrip.cpp
+        src/SpectrumStrip.h
 )
+
+# The generated QML type registration includes <SpectrumStrip.h>.
+target_include_directories(aethercompanion PRIVATE src)
 
 set_target_properties(aethercompanion PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"

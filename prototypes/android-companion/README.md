@@ -16,10 +16,10 @@ not link `aethercore`**, root build untouched.
 | 2 | ✅* SmartSDR UDP :4992 discovery broadcast reception on Android WiFi (MulticastLock) |
 | 3 | ✅ TCP :4992 command channel + slice tune from touch UI |
 | 4 | ✅* RX audio via Qt Multimedia (AAudio) at usable latency |
-| 5 | FFT packet ingest → drag-to-tune spectrum strip in Quick |
+| 5 | ✅* FFT packet ingest → drag-to-tune spectrum strip in Quick |
 | 6 | Foreground service; RX survives screen lock |
 
-Phases 1–4 are in this tree (\* = emulator-validated; real-phone
+Phases 1–5 are in this tree (\* = emulator-validated; real-phone
 sign-off pending hardware). Protocol facts mirror
 `src/core/RadioDiscovery.{h,cpp}`, `src/core/CommandParser.cpp`, and the
 `client program` / `sub slice all` init order in
@@ -86,7 +86,17 @@ and streams 600 Hz sine VITA packets (PCC 0x03E3, float32 stereo BE,
 port 24993. Toggle the speaker button on the slice page — the footer
 counts packets/KiB fed to QAudioSink.
 
+Phase-5 spectrum: on `display panafall create` the fake server replies
+with a pan id, emits `display pan` status (center/bandwidth), and
+streams FFT frames to the same UDP path — 512 u16 bins split across
+two packets per frame (subheader per `PanadapterStream::decodeFFT`),
+noise floor plus a peak that tracks slice 0. Toggle the chart button:
+the strip renders at ~20 fps; tap/drag on it computes
+`center − bw/2 + x/width·bw` and round-trips `slice tune`, moving both
+the slice card and the peak.
+
 Emulator proves parse + model + UI + sink consumption only. Still
 phone-only: real WiFi broadcast delivery / MulticastLock (phase 2
-sign-off), audible output + AAudio latency (phase 4 sign-off) —
-untested until Android hardware is available.
+sign-off), audible output + AAudio latency (phase 4 sign-off), touch
+drag feel on real glass (phase 5 sign-off) — untested until Android
+hardware is available.
