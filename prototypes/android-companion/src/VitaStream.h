@@ -19,11 +19,14 @@
 #include <QUdpSocket>
 #include <QVector>
 
+struct OpusDecoder;
+
 class VitaStream : public QObject {
     Q_OBJECT
     Q_PROPERTY(bool audioActive READ audioActive NOTIFY statsChanged)
     Q_PROPERTY(int packetsReceived READ packetsReceived NOTIFY statsChanged)
     Q_PROPERTY(qint64 bytesPlayed READ bytesPlayed NOTIFY statsChanged)
+    Q_PROPERTY(bool opusCapable READ opusCapable CONSTANT)
 
 public:
     // Fixed local port so the emulator harness can redir into it.
@@ -34,6 +37,7 @@ public:
     bool audioActive() const { return m_audioSink != nullptr; }
     int packetsReceived() const { return m_packetsReceived; }
     qint64 bytesPlayed() const { return m_bytesPlayed; }
+    static bool opusCapable();
 
     void openSocket(const QHostAddress& radioAddress);
     void closeSocket();
@@ -57,14 +61,17 @@ private:
     void onReadyRead();
     void sendPrime();
     void handleAudio(const uchar* raw, int size, bool hasTrailer);
+    void handleOpusAudio(const uchar* raw, int size, bool hasTrailer);
     void handleFft(const uchar* raw, int size, bool hasTrailer);
     void handleMeter(const uchar* raw, int size, bool hasTrailer);
+    void writePcmFloats(const float* samples, int count);
 
     QUdpSocket m_socket;
     QTimer m_primeTimer;
     QTimer m_statsTimer;
     QAudioSink* m_audioSink{nullptr};
     QIODevice* m_sinkIo{nullptr};
+    OpusDecoder* m_opusDecoder{nullptr}; // lazy on first 0x8005 packet
     QHostAddress m_radioAddress;
     quint32 m_audioStreamId{0};
     quint32 m_fftStreamId{0};

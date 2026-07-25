@@ -29,25 +29,42 @@ AUDIO_DEST = ("127.0.0.1", 24993)
 pan = {"center": 14.100, "bandwidth": 0.200}
 
 
-def audio_sender(stop_event):
-    """600 Hz sine, 24 kHz float32 stereo BE, VITA ExtData packets."""
-    sample_rate, samples_per_pkt = 24000, 256
+def audio_sender(stop_event, opus=False):
+    """600 Hz sine at 24 kHz stereo as VITA ExtData packets.
+
+    PCM mode: float32 big-endian, PCC 0x03E3, 256 samples/packet.
+    Opus mode: one 240-sample (10 ms) Opus frame per packet, PCC 0x8005
+    (requires `pip install opuslib` + a libopus on the loader path).
+    """
+    sample_rate = 24000
+    samples_per_pkt = 240 if opus else 256
+    encoder = None
+    if opus:
+        import opuslib  # noqa: deferred so PCM mode needs no libopus
+        encoder = opuslib.Encoder(sample_rate, 2, "audio")
     phase = 0.0
     step = 2 * math.pi * 600 / sample_rate
     seq = 0
     sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     period = samples_per_pkt / sample_rate
-    print(f"audio sender -> {AUDIO_DEST}", flush=True)
+    print(f"audio sender ({'opus' if opus else 'pcm'}) -> {AUDIO_DEST}", flush=True)
     while not stop_event.is_set():
-        floats = []
+        samples = []
         for _ in range(samples_per_pkt):
             v = 0.3 * math.sin(phase)
             phase += step
-            floats += [v, v]  # stereo
-        payload = struct.pack(f">{len(floats)}f", *floats)
+            samples += [v, v]  # stereo
+        if opus:
+            pcm16 = struct.pack(f"<{len(samples)}h",
+                                *(int(s * 32767) for s in samples))
+            payload = encoder.encode(pcm16, samples_per_pkt)
+            pcc = 0x534C8005
+        else:
+            payload = struct.pack(f">{len(samples)}f", *samples)
+            pcc = 0x534C03E3
         word0 = (0x3 << 28) | (0x1 << 24) | ((seq & 0xF) << 16) | ((28 + len(payload)) // 4)
         header = struct.pack(">IIIIIII", word0, AUDIO_STREAM_ID,
-                             0x00001C2D, 0x534C03E3, 0, 0, 0)
+                             0x00001C2D, pcc, 0, 0, 0)
         sock.sendto(header + payload, AUDIO_DEST)
         seq += 1
         time.sleep(period)
@@ -164,8 +181,10 @@ def serve(conn, addr):
                                  daemon=True).start()
                 continue
             if cmd.startswith("stream create type=remote_audio_rx"):
+                use_opus = "compression=opus" in cmd
                 conn.sendall(f"R{seq}|0|{AUDIO_STREAM_ID:X}\n".encode())
-                threading.Thread(target=audio_sender, args=(audio_stop,),
+                threading.Thread(target=audio_sender,
+                                 args=(audio_stop, use_opus),
                                  daemon=True).start()
                 continue
             if cmd.startswith("display panafall create"):

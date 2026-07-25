@@ -56,6 +56,16 @@ populates from live broadcasts within ~1 s of a radio being present.
 - **Per-slice S-meter** — `sub meter all`, SLC/LEVEL meter defs mapped
   by index, VITA PCC 0x8002 (u16 id + s16 raw pairs, dBm = raw/128),
   shown as S-units + dBm on each slice card (S9 = −73 dBm, 6 dB/unit).
+- **Opus RX audio** — run `tools/setup-opus-android.sh` once before
+  cmake (DFNR-style setup: downloads opus 1.5.2, NDK-builds static
+  libopus per ABI into gitignored `third_party/`; configure prints
+  "Opus decode enabled/disabled"). The slice-page OPUS/PCM toggle picks
+  `compression=opus` vs `none` on stream create; VitaStream decodes
+  PCC 0x8005 (one 240-sample 24 kHz frame per packet, facts per
+  `src/core/OpusCodec.{h,cpp}`) through libopus into the same sink.
+  The fake radio encodes with python `opuslib` when the app requests
+  opus (venv + `pip install opuslib`, needs a host libopus, e.g.
+  `DYLD_LIBRARY_PATH=/usr/local/opt/opus/lib`); PCM mode needs neither.
 
 ## Emulator validation (no phone / no radio)
 

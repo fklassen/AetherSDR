@@ -158,6 +158,13 @@ ApplicationWindow {
                                    : connection.startSpectrum()
                     }
                     ToolButton {
+                        visible: connection.vita.opusCapable
+                        enabled: !connection.vita.audioActive
+                        text: connection.opusEnabled ? "OPUS" : "PCM"
+                        font.pixelSize: 13
+                        onClicked: connection.opusEnabled = !connection.opusEnabled
+                    }
+                    ToolButton {
                         text: connection.vita.audioActive ? "🔊" : "🔇"
                         font.pixelSize: 20
                         onClicked: connection.vita.audioActive

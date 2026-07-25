@@ -5,14 +5,30 @@
 #include <QNetworkDatagram>
 #include <QtEndian>
 
+#ifdef HAVE_OPUS
+#include <opus/opus.h>
+#endif
+
 namespace {
 constexpr int kVitaHeaderBytes = 28;
 constexpr quint16 kPccIfNarrow = 0x03E3;
+constexpr quint16 kPccOpus = 0x8005;
 constexpr quint16 kPccFft = 0x8003;
 constexpr quint16 kPccMeter = 0x8002;
 constexpr int kFftSubheaderBytes = 12;
 constexpr int kSampleRate = 24000;
+// One Opus frame per VITA packet, 10 ms at 24 kHz (OpusCodec.h facts).
+constexpr int kOpusFrameSamples = 240;
 } // namespace
+
+bool VitaStream::opusCapable()
+{
+#ifdef HAVE_OPUS
+    return true;
+#else
+    return false;
+#endif
+}
 
 VitaStream::VitaStream(QObject* parent)
     : QObject(parent)
@@ -70,6 +86,12 @@ void VitaStream::setAudioStream(quint32 streamId)
 void VitaStream::clearAudioStream()
 {
     m_audioStreamId = 0;
+#ifdef HAVE_OPUS
+    if (m_opusDecoder) {
+        opus_decoder_destroy(m_opusDecoder);
+        m_opusDecoder = nullptr;
+    }
+#endif
     if (m_audioSink) {
         m_audioSink->stop();
         m_audioSink->deleteLater();
@@ -121,6 +143,9 @@ void VitaStream::onReadyRead()
         if (pcc == kPccIfNarrow && streamId == m_audioStreamId) {
             ++m_packetsReceived;
             handleAudio(raw, data.size(), hasTrailer);
+        } else if (pcc == kPccOpus && streamId == m_audioStreamId) {
+            ++m_packetsReceived;
+            handleOpusAudio(raw, data.size(), hasTrailer);
         } else if (pcc == kPccFft && streamId == m_fftStreamId) {
             ++m_packetsReceived;
             handleFft(raw, data.size(), hasTrailer);
@@ -131,6 +156,15 @@ void VitaStream::onReadyRead()
     }
 }
 
+void VitaStream::writePcmFloats(const float* samples, int count)
+{
+    if (!m_sinkIo || count <= 0)
+        return;
+    m_bytesPlayed += m_sinkIo->write(
+        reinterpret_cast<const char*>(samples),
+        count * static_cast<qint64>(sizeof(float)));
+}
+
 void VitaStream::handleAudio(const uchar* raw, int size, bool hasTrailer)
 {
     const int payloadBytes = size - kVitaHeaderBytes - (hasTrailer ? 4 : 0);
@@ -139,14 +173,49 @@ void VitaStream::handleAudio(const uchar* raw, int size, bool hasTrailer)
         return;
 
     // Big-endian float32 → native for the sink.
-    QByteArray pcm(numFloats * static_cast<int>(sizeof(float)), Qt::Uninitialized);
-    auto* dst = reinterpret_cast<float*>(pcm.data());
+    QVector<float> pcm(numFloats);
     const uchar* src = raw + kVitaHeaderBytes;
     for (int i = 0; i < numFloats; ++i) {
         const quint32 u = qFromBigEndian<quint32>(src + i * 4);
-        std::memcpy(&dst[i], &u, 4);
+        std::memcpy(&pcm[i], &u, 4);
     }
-    m_bytesPlayed += m_sinkIo->write(pcm);
+    writePcmFloats(pcm.constData(), numFloats);
+}
+
+void VitaStream::handleOpusAudio(const uchar* raw, int size, bool hasTrailer)
+{
+#ifdef HAVE_OPUS
+    const int payloadBytes = size - kVitaHeaderBytes - (hasTrailer ? 4 : 0);
+    if (payloadBytes <= 0 || !m_sinkIo)
+        return;
+
+    if (!m_opusDecoder) {
+        int err = 0;
+        m_opusDecoder = opus_decoder_create(kSampleRate, 2, &err);
+        if (err != OPUS_OK || !m_opusDecoder) {
+            m_opusDecoder = nullptr;
+            return;
+        }
+    }
+
+    // Payload = one Opus frame (PanadapterStream::decodeOpusAudio).
+    // Decode to int16 stereo, convert to float for the sink.
+    int16_t frame[kOpusFrameSamples * 2];
+    const int samples = opus_decode(
+        m_opusDecoder, raw + kVitaHeaderBytes, payloadBytes,
+        frame, kOpusFrameSamples, 0);
+    if (samples <= 0)
+        return;
+
+    QVector<float> pcm(samples * 2);
+    for (int i = 0; i < samples * 2; ++i)
+        pcm[i] = frame[i] / 32768.0f;
+    writePcmFloats(pcm.constData(), samples * 2);
+#else
+    Q_UNUSED(raw);
+    Q_UNUSED(size);
+    Q_UNUSED(hasTrailer);
+#endif
 }
 
 void VitaStream::handleMeter(const uchar* raw, int size, bool hasTrailer)

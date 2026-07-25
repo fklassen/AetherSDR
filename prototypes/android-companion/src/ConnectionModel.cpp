@@ -103,12 +103,22 @@ void ConnectionModel::sendCommand(const QString& command, ReplyHandler onReply)
     m_socket.write(QStringLiteral("C%1|%2\n").arg(seq).arg(command).toUtf8());
 }
 
+void ConnectionModel::setOpusEnabled(bool on)
+{
+    if (m_opusEnabled == on)
+        return;
+    m_opusEnabled = on;
+    emit opusEnabledChanged();
+}
+
 void ConnectionModel::startRxAudio()
 {
     if (m_vita.audioActive())
         return;
-    // Uncompressed stream (spike scope; desktop uses Opus on WAN only).
-    sendCommand(QStringLiteral("stream create type=remote_audio_rx compression=none"),
+    // Compression per toggle (desktop: Opus on WAN, none on LAN).
+    const bool opus = m_opusEnabled && VitaStream::opusCapable();
+    sendCommand(QStringLiteral("stream create type=remote_audio_rx compression=%1")
+                    .arg(opus ? QStringLiteral("opus") : QStringLiteral("none")),
                 [this](int code, const QString& body) {
                     if (code != 0)
                         return;

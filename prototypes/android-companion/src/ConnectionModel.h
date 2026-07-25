@@ -25,6 +25,7 @@ class ConnectionModel : public QObject {
     Q_PROPERTY(SliceListModel* slices READ slices CONSTANT)
     Q_PROPERTY(VitaStream* vita READ vita CONSTANT)
     Q_PROPERTY(bool spectrumActive READ spectrumActive NOTIFY panChanged)
+    Q_PROPERTY(bool opusEnabled READ opusEnabled WRITE setOpusEnabled NOTIFY opusEnabledChanged)
     Q_PROPERTY(double panCenterMhz READ panCenterMhz NOTIFY panChanged)
     Q_PROPERTY(double panBandwidthMhz READ panBandwidthMhz NOTIFY panChanged)
 
@@ -36,6 +37,8 @@ public:
     SliceListModel* slices() { return &m_slices; }
     VitaStream* vita() { return &m_vita; }
     bool spectrumActive() const { return m_panId != 0; }
+    bool opusEnabled() const { return m_opusEnabled; }
+    void setOpusEnabled(bool on);
     double panCenterMhz() const { return m_panCenterMhz; }
     double panBandwidthMhz() const { return m_panBandwidthMhz; }
 
@@ -55,6 +58,7 @@ public:
 signals:
     void stateChanged();
     void panChanged();
+    void opusEnabledChanged();
 
 private:
     using ReplyHandler = std::function<void(int code, const QString& body)>;
@@ -71,6 +75,7 @@ private:
     QHash<quint16, int> m_sMeterSliceByIndex; // meter index → slice id (SLC/LEVEL)
     quint32 m_rxAudioStreamId{0};
     quint32 m_panId{0};
+    bool m_opusEnabled{false};
     double m_panCenterMhz{14.1};
     double m_panBandwidthMhz{0.2};
     QString m_state{"disconnected"};

@@ -39,6 +39,18 @@ qt_add_qml_module(aethercompanion
 # The generated QML type registration includes <SpectrumStrip.h>.
 target_include_directories(aethercompanion PRIVATE src)
 
+# Optional libopus (run tools/setup-opus-android.sh before cmake).
+# Auto-detects per-ABI like the main tree's DFNR setup pattern.
+set(_opus_root "${CMAKE_CURRENT_SOURCE_DIR}/third_party/opus/${ANDROID_ABI}")
+if(EXISTS "${_opus_root}/lib/libopus.a")
+    target_include_directories(aethercompanion PRIVATE "${_opus_root}/include")
+    target_link_libraries(aethercompanion PRIVATE "${_opus_root}/lib/libopus.a")
+    target_compile_definitions(aethercompanion PRIVATE HAVE_OPUS)
+    message(STATUS "Opus decode enabled (${_opus_root})")
+else()
+    message(STATUS "Opus decode disabled — run tools/setup-opus-android.sh")
+endif()
+
 set_target_properties(aethercompanion PROPERTIES
     QT_ANDROID_PACKAGE_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/android"
     QT_ANDROID_MIN_SDK_VERSION 28

@@ -1,3 +1,4 @@
 build/
 build-*/
 aqtinstall.log
+third_party/
