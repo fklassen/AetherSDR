@@ -29,14 +29,19 @@ registers as a **non-GUI client** (no `client gui`) so it can never
 claim a GUI slot on a real radio; tunes use
 `slice tune <id> <MHz> autopan=0` per `src/models/SliceModel.cpp`.
 
-## Build (macOS host)
+## Build
 
-Prereqs: JDK 21, Android SDK (platform 35, build-tools 35, NDK 27.2),
-Qt 6.11.1 `android_arm64_v8a` + macOS host kit installed via `aqt` under
-`~/Qt`.
+**Full setup, emulator, and harness instructions live in
+[`DEVELOPING.md`](DEVELOPING.md)** — what to install (JDK, Android SDK
+packages, Qt for Android via `aqt`, the OpenSSL and Opus setup
+scripts), how to build for phone vs emulator, how to create and run the
+AVD, how to wire the fake-radio harness, and a troubleshooting table.
+
+The short version, once the toolchain from that guide is in place:
 
 ```bash
 export ANDROID_SDK_ROOT=/usr/local/share/android-commandlinetools
+./tools/setup-openssl-android.sh          # required for SmartLink/WAN
 ~/Qt/6.11.1/android_arm64_v8a/bin/qt-cmake -S . -B build -G Ninja \
   -DQT_HOST_PATH=$HOME/Qt/6.11.1/macos \
   -DANDROID_SDK_ROOT=$ANDROID_SDK_ROOT \
@@ -122,7 +127,11 @@ populates from live broadcasts within ~1 s of a radio being present.
 
 ## Emulator validation (no phone / no radio)
 
-Validated 2026-07-24 on the x86_64 emulator: build the
+> Step-by-step emulator setup, harness wiring, and troubleshooting are
+> in [`DEVELOPING.md`](DEVELOPING.md); this section records *what was
+> validated* rather than repeating the how.
+
+Validated on the x86_64 emulator: build the
 `android_x86_64` kit variant into `build-x86` (same configure line,
 swap the kit path), then:
 
