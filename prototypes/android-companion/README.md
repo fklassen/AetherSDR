@@ -12,16 +12,22 @@ not link `aethercore`**, root build untouched.
 
 | Phase | Proves |
 |---|---|
-| 1 | Qt 6.11 for Android builds + deploys a C++20 Qt Quick APK |
-| 2 | SmartSDR UDP :4992 discovery broadcast reception on Android WiFi (MulticastLock) |
-| 3 | TCP :4992 command channel + slice tune from touch UI |
+| 1 | ✅ Qt 6.11 for Android builds + deploys a C++20 Qt Quick APK |
+| 2 | ✅* SmartSDR UDP :4992 discovery broadcast reception on Android WiFi (MulticastLock) |
+| 3 | ✅ TCP :4992 command channel + slice tune from touch UI |
 | 4 | RX audio via Qt Multimedia (AAudio) at usable latency |
 | 5 | FFT packet ingest → drag-to-tune spectrum strip in Quick |
 | 6 | Foreground service; RX survives screen lock |
 
-Phases 1–2 are in this tree. Protocol facts mirror
-`src/core/RadioDiscovery.{h,cpp}` (same project — no clean-room needed);
-the spike code itself is original and minimal.
+Phases 1–3 are in this tree (\* = emulator-validated; real-phone WiFi
+sign-off pending hardware). Protocol facts mirror
+`src/core/RadioDiscovery.{h,cpp}`, `src/core/CommandParser.cpp`, and the
+`client program` / `sub slice all` init order in
+`src/models/RadioModel.cpp` (same project — no clean-room needed); the
+spike code itself is original and minimal. The spike deliberately
+registers as a **non-GUI client** (no `client gui`) so it can never
+claim a GUI slot on a real radio; tunes use
+`slice tune <id> <MHz> autopan=0` per `src/models/SliceModel.cpp`.
 
 ## Build (macOS host)
 
@@ -59,6 +65,17 @@ adb shell am start -n org.aethersdr.companion/org.qtproject.qt.android.bindings.
 Send synthetic discovery datagrams to `127.0.0.1:14992` (key=value
 payload per `RadioDiscovery.cpp`) and the radio card appears. Host port
 is 14992 because a running desktop AetherSDR already owns UDP 4992.
+
+For the phase-3 command channel, run a fake radio TCP server on the
+host (port 4993: send `V…`/`H…` on accept, reply `R<seq>|0|` to each
+command, emit `S…|slice N in_use=1 RF_frequency=… mode=…` statuses) and
+tunnel it into the guest with `adb reverse tcp:4993 tcp:4993`, then
+advertise `ip=127.0.0.1 port=4993` in the discovery datagram. Note:
+`10.0.2.2` (the classic host alias) is NOT routable from the API-35
+emulator's WiFi network — use `adb reverse` + loopback instead. Tap the
+radio card → slice cards appear; step buttons round-trip
+`slice tune` through the server and the UI updates from the status
+broadcast.
 
 Emulator proves parse + model + UI only. Still phone-only: real WiFi
 broadcast delivery / MulticastLock behavior (spike phase 2 sign-off)

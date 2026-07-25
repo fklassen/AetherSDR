@@ -19,6 +19,7 @@ struct SpikeRadio {
     QString version;
     QString status;
     QHostAddress address;
+    quint16 port{4992};
     qint64 lastSeenMs{0};
 };
 
@@ -35,6 +36,7 @@ public:
         VersionRole,
         StatusRole,
         AddressRole,
+        PortRole,
     };
 
     explicit DiscoveryModel(QObject* parent = nullptr);

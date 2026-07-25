@@ -14,8 +14,12 @@ qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(aethercompanion
     src/main.cpp
+    src/ConnectionModel.cpp
+    src/ConnectionModel.h
     src/DiscoveryModel.cpp
     src/DiscoveryModel.h
+    src/SliceListModel.cpp
+    src/SliceListModel.h
 )
 
 qt_add_qml_module(aethercompanion

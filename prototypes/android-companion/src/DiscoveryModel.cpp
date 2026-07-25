@@ -65,6 +65,7 @@ QVariant DiscoveryModel::data(const QModelIndex& index, int role) const
     case VersionRole:  return r.version;
     case StatusRole:   return r.status;
     case AddressRole:  return r.address.toString();
+    case PortRole:     return r.port;
     }
     return {};
 }
@@ -79,6 +80,7 @@ QHash<int, QByteArray> DiscoveryModel::roleNames() const
         {VersionRole, "version"},
         {StatusRole, "status"},
         {AddressRole, "address"},
+        {PortRole, "port"},
     };
 }
 
@@ -118,6 +120,7 @@ void DiscoveryModel::onReadyRead()
             else if (key == "version")  radio.version = value;
             else if (key == "status")   radio.status = value;
             else if (key == "ip")       radio.address = QHostAddress(value);
+            else if (key == "port")     radio.port = value.toUShort();
         }
         if (radio.serial.isEmpty())
             continue;
