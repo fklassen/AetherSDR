@@ -67,6 +67,20 @@ populates from live broadcasts within ~1 s of a radio being present.
   opus (venv + `pip install opuslib`, needs a host libopus, e.g.
   `DYLD_LIBRARY_PATH=/usr/local/opt/opus/lib`); PCM mode needs neither.
 
+- **WAN certificate pinning (TOFU)** — mirrors
+  `WanConnection::onTlsConnected` (GHSA-wfx7-w6p8-4jr2). The radio's
+  certificate is self-signed, so chain verification can never pass and
+  the socket is configured `VerifyNone`; the SHA-256 fingerprint is what
+  authenticates the peer. First connect to a host pins silently; a match
+  proceeds; a **mismatch pauses the handshake** — `wan validate` is
+  never sent, so the session stays unauthenticated — and raises a dialog
+  showing both fingerprints. Accept replaces the pin and resumes;
+  Reject tears the connection down and never retries into it. Pins are
+  stored per host with a timestamp, and `pinnedCerts()` /
+  `forgetPinnedCert()` back a management view (the desktop has a
+  settings UI for the same cache). To exercise a mismatch: delete
+  `tools/.harness-certs/` and restart `fake_smartlink.py`, which
+  regenerates a fresh self-signed cert for the same host.
 - **Operator polish** — LAN auto-reconnect (2/5/10/10/10 s backoff, five
   attempts; WAN never retries because the broker handle goes stale, and
   user-initiated disconnects never retry), pan zoom (`display pan set
@@ -97,9 +111,9 @@ populates from live broadcasts within ~1 s of a radio being present.
   `tools/setup-openssl-android.sh` once (KDAB android_openssl
   prebuilts — Qt on Android has no TLS backend without them).
   Spike security posture: no credential persistence, tokens in memory
-  only; radio/broker certs are trust-on-connect **only** in harness
-  mode / WAN spike — desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2)
-  and that is a must-fix before graduation. Emulator harness:
+  only. **Certificate pinning is implemented** (see below); the
+  broker's own TLS is verified normally against the CA chain, and only
+  the local test harness may bypass verification. Emulator harness:
   `tools/fake_smartlink.py` (self-signed TLS broker :14443 + TLS radio
   front :14994 proxying to `fake_radio_tcp.py`); enter
   `127.0.0.1:14443` in the SmartLink email field (harness mode skips

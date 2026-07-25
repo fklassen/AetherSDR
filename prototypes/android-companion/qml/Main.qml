@@ -14,8 +14,76 @@ ApplicationWindow {
         initialItem: discoveryPage
     }
 
+    // Certificate-pin mismatch. The handshake is already paused in
+    // ConnectionModel — no authenticated traffic has been sent — so this
+    // dialog is the operator decision point, not a courtesy notice.
+    Dialog {
+        id: certDialog
+        anchors.centerIn: parent
+        width: Math.min(parent.width - 40, 560)
+        modal: true
+        closePolicy: Popup.NoAutoClose
+        title: "Certificate changed"
+
+        property string host: ""
+        property string expected: ""
+        property string presented: ""
+
+        function fmt(fp) {
+            // Group hex into pairs for eyeball comparison.
+            return fp.replace(/(.{2})(?=.)/g, "$1:").toUpperCase()
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 10
+
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                text: "The certificate presented by " + certDialog.host
+                      + " does not match the one pinned on first connect."
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.Wrap
+                color: "#c62828"
+                text: "This can mean the radio was replaced or its firmware "
+                      + "reinstalled — or that someone is intercepting the "
+                      + "connection. Only accept if you know why it changed."
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WrapAnywhere
+                font.family: "monospace"
+                font.pixelSize: 11
+                text: "Pinned:\n" + certDialog.fmt(certDialog.expected)
+                      + "\n\nPresented:\n" + certDialog.fmt(certDialog.presented)
+            }
+        }
+
+        footer: DialogButtonBox {
+            Button {
+                text: "Reject"
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                onClicked: { connection.rejectPresentedCert(); certDialog.close() }
+            }
+            Button {
+                text: "Accept new certificate"
+                DialogButtonBox.buttonRole: DialogButtonBox.DestructiveRole
+                onClicked: { connection.acceptPresentedCert(); certDialog.close() }
+            }
+        }
+    }
+
     Connections {
         target: connection
+        function onCertFingerprintMismatch(host, expected, presented) {
+            certDialog.host = host
+            certDialog.expected = expected
+            certDialog.presented = presented
+            certDialog.open()
+        }
         function onStateChanged() {
             if (connection.state === "connected"
                     && stack.currentItem !== slicePage)

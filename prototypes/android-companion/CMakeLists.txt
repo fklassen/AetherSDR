@@ -14,6 +14,8 @@ qt_standard_project_setup(REQUIRES 6.5)
 
 qt_add_executable(aethercompanion
     src/main.cpp
+    src/CertPinStore.cpp
+    src/CertPinStore.h
     src/ConnectionModel.cpp
     src/ConnectionModel.h
     src/DiscoveryModel.cpp

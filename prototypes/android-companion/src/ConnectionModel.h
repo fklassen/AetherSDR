@@ -14,9 +14,11 @@
 #include <QSettings>
 #include <QSslSocket>
 #include <QTimer>
+#include <QVariantList>
 
 #include <functional>
 
+#include "CertPinStore.h"
 #include "SliceListModel.h"
 #include "VitaStream.h"
 
@@ -49,12 +51,20 @@ public:
 
     Q_INVOKABLE void connectToRadio(const QString& host, int port,
                                     const QString& label);
-    // SmartLink WAN: TLS connect + "wan validate handle=<h>" handshake
-    // (WanConnection facts). Spike accepts the radio's self-signed cert
-    // blindly — desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2); noted
-    // as a must-fix before any graduation.
+    // SmartLink WAN: TLS connect, TOFU certificate-pin check, then the
+    // "wan validate handle=<h>" handshake (WanConnection facts). On a
+    // fingerprint mismatch the handshake is PAUSED — wan validate is
+    // never sent — until acceptPresentedCert()/rejectPresentedCert()
+    // (GHSA-wfx7-w6p8-4jr2).
     Q_INVOKABLE void connectWan(const QString& host, int tlsPort,
                                 const QString& wanHandle, const QString& label);
+
+    // Operator decision on a paused mismatched handshake.
+    Q_INVOKABLE void acceptPresentedCert();
+    Q_INVOKABLE void rejectPresentedCert();
+    // Pinned-cert management (the desktop has a settings UI for this).
+    Q_INVOKABLE QVariantList pinnedCerts() const;
+    Q_INVOKABLE void forgetPinnedCert(const QString& host);
     Q_INVOKABLE void disconnectFromRadio();
 
     Q_INVOKABLE void tune(int sliceId, double freqMhz);
@@ -77,6 +87,9 @@ signals:
     void panChanged();
     void opusEnabledChanged();
     void lastManualIpChanged();
+    // Handshake is paused awaiting an operator decision.
+    void certFingerprintMismatch(const QString& host, const QString& expected,
+                                 const QString& presented);
 
 private:
     using ReplyHandler = std::function<void(int code, const QString& body)>;
@@ -89,6 +102,12 @@ private:
     QSslSocket m_socket; // plain mode for LAN, encrypted for WAN
     bool m_wanMode{false};
     QString m_wanHandle;
+    // TOFU cert pin state (WAN only)
+    QString m_wanHost;
+    QString m_expectedFingerprintHex;
+    QString m_presentedFingerprintHex; // set only while a decision is pending
+    bool m_awaitingCertDecision{false};
+    std::function<void()> m_onWanLinkUp; // resumes a paused handshake
     SliceListModel m_slices;
     VitaStream m_vita;
     QHash<quint32, ReplyHandler> m_pendingReplies;

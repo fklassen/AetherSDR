@@ -1,5 +1,10 @@
 #include "ConnectionModel.h"
 
+#include <QCryptographicHash>
+#include <QSslCertificate>
+#include <QSslConfiguration>
+#include <QVariantMap>
+
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
 #include <QJniObject>
@@ -64,15 +69,51 @@ ConnectionModel::ConnectionModel(QObject* parent)
         if (!m_wanMode)
             onLinkUp();
     });
+    m_onWanLinkUp = onLinkUp;
     connect(&m_socket, &QSslSocket::encrypted, this, [this, onLinkUp] {
-        if (m_wanMode)
+        if (!m_wanMode)
+            return;
+
+        // TOFU pin check before ANY authenticated traffic. Mirrors
+        // WanConnection::onTlsConnected (GHSA-wfx7-w6p8-4jr2).
+        const QSslCertificate cert = m_socket.peerCertificate();
+        if (cert.isNull()) {
+            // No certificate to pin against — treat as untrusted rather
+            // than proceeding silently.
+            setState(QStringLiteral("error: peer presented no certificate"));
+            m_socket.abort();
+            return;
+        }
+        const QString fpHex = QString::fromLatin1(
+            cert.digest(QCryptographicHash::Sha256).toHex());
+
+        if (m_expectedFingerprintHex.isEmpty()) {
+            // First use for this host: pin it and continue.
+            CertPinStore::store(m_wanHost, fpHex);
+            m_expectedFingerprintHex = fpHex;
             onLinkUp();
+            return;
+        }
+        if (m_expectedFingerprintHex == fpHex) {
+            onLinkUp();
+            return;
+        }
+
+        // Mismatch: hold the handshake. wan validate is NOT sent, so the
+        // session stays unauthenticated until the operator decides.
+        m_presentedFingerprintHex = fpHex;
+        m_awaitingCertDecision = true;
+        setState(QStringLiteral("certificate mismatch — awaiting decision"));
+        emit certFingerprintMismatch(m_wanHost, m_expectedFingerprintHex,
+                                     fpHex);
     });
     connect(&m_socket, &QSslSocket::sslErrors, this,
             [this](const QList<QSslError>& errors) {
-                // Spike-grade trust-on-connect for the radio's self-signed
-                // cert. Desktop pins fingerprints (GHSA-wfx7-w6p8-4jr2);
-                // required before any graduation from prototypes/.
+                // The radio's cert is self-signed, so chain verification
+                // can never pass; the TOFU fingerprint check above is what
+                // actually authenticates the peer. Only WAN sockets get
+                // here (LAN is plaintext), and only after the socket was
+                // configured VerifyNone in connectWan().
                 if (m_wanMode)
                     m_socket.ignoreSslErrors(errors);
             });
@@ -158,11 +199,69 @@ void ConnectionModel::connectWan(const QString& host, int tlsPort,
         m_socket.abort();
     m_wanMode = true;
     m_wanHandle = wanHandle;
+    m_wanHost = host;
+    m_expectedFingerprintHex = CertPinStore::load(host);
+    m_presentedFingerprintHex.clear();
+    m_awaitingCertDecision = false;
+    m_userDisconnect = false;
     m_radioLabel = label + " (WAN)";
     m_rxBuffer.clear();
     m_seq = 1;
+
+    // The radio's certificate is self-signed, so chain verification can
+    // never succeed; VerifyNone lets the handshake complete and the TOFU
+    // fingerprint check authenticates the peer instead. Same rationale as
+    // WanConnection::connectToRadio (GHSA-wfx7-w6p8-4jr2).
+    QSslConfiguration config = QSslConfiguration::defaultConfiguration();
+    config.setPeerVerifyMode(QSslSocket::VerifyNone);
+    m_socket.setSslConfiguration(config);
+
     setState("connecting (WAN TLS)");
     m_socket.connectToHostEncrypted(host, static_cast<quint16>(tlsPort));
+}
+
+void ConnectionModel::acceptPresentedCert()
+{
+    if (!m_awaitingCertDecision || m_presentedFingerprintHex.isEmpty())
+        return;
+    // Operator vouched for the new certificate: replace the stored pin
+    // and resume the handshake that was held.
+    CertPinStore::store(m_wanHost, m_presentedFingerprintHex);
+    m_expectedFingerprintHex = m_presentedFingerprintHex;
+    m_presentedFingerprintHex.clear();
+    m_awaitingCertDecision = false;
+    if (m_onWanLinkUp)
+        m_onWanLinkUp();
+}
+
+void ConnectionModel::rejectPresentedCert()
+{
+    if (!m_awaitingCertDecision)
+        return;
+    m_presentedFingerprintHex.clear();
+    m_awaitingCertDecision = false;
+    // Never retry into a rejected peer.
+    m_userDisconnect = true;
+    m_socket.abort();
+    setState(QStringLiteral("certificate rejected — disconnected"));
+}
+
+QVariantList ConnectionModel::pinnedCerts() const
+{
+    QVariantList out;
+    for (const PinnedCert& pin : CertPinStore::list()) {
+        QVariantMap entry;
+        entry[QStringLiteral("host")] = pin.host;
+        entry[QStringLiteral("fingerprint")] = pin.fingerprintHex;
+        entry[QStringLiteral("pinnedAt")] = pin.pinnedAtIso;
+        out.append(entry);
+    }
+    return out;
+}
+
+void ConnectionModel::forgetPinnedCert(const QString& host)
+{
+    CertPinStore::forget(host);
 }
 
 void ConnectionModel::disconnectFromRadio()
