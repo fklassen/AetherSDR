@@ -62,20 +62,23 @@ adb emu 'redir add udp:14992:4992'   # host 14992 → guest 4992
 adb shell am start -n org.aethersdr.companion/org.qtproject.qt.android.bindings.QtActivity
 ```
 
-Send synthetic discovery datagrams to `127.0.0.1:14992` (key=value
-payload per `RadioDiscovery.cpp`) and the radio card appears. Host port
-is 14992 because a running desktop AetherSDR already owns UDP 4992.
+The fake-radio harness lives in `tools/`:
 
-For the phase-3 command channel, run a fake radio TCP server on the
-host (port 4993: send `V…`/`H…` on accept, reply `R<seq>|0|` to each
-command, emit `S…|slice N in_use=1 RF_frequency=… mode=…` statuses) and
-tunnel it into the guest with `adb reverse tcp:4993 tcp:4993`, then
-advertise `ip=127.0.0.1 port=4993` in the discovery datagram. Note:
-`10.0.2.2` (the classic host alias) is NOT routable from the API-35
-emulator's WiFi network — use `adb reverse` + loopback instead. Tap the
-radio card → slice cards appear; step buttons round-trip
-`slice tune` through the server and the UI updates from the status
-broadcast.
+```bash
+adb reverse tcp:4993 tcp:4993          # guest → host command channel
+adb emu 'redir add udp:24993:14993'    # host → guest VITA (audio + FFT)
+python3 tools/fake_radio_tcp.py &      # TCP server + VITA senders
+python3 tools/fake_radio.py            # discovery datagrams (30 × 1 s)
+```
+
+`fake_radio.py` sends discovery datagrams to host `127.0.0.1:14992`
+advertising `ip=127.0.0.1 port=4993` — the radio card appears within a
+second. `fake_radio_tcp.py` answers the command channel and streams
+audio + FFT (docstrings have the per-phase detail). Note: `10.0.2.2`
+(the classic host alias) is NOT routable from the API-35 emulator's
+WiFi network — hence `adb reverse` + loopback. Tap the radio card →
+slice cards appear; step buttons round-trip `slice tune` through the
+server and the UI updates from the status broadcast.
 
 Phase-4 audio: the fake server answers
 `stream create type=remote_audio_rx compression=none` with a stream id
