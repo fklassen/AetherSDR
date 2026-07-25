@@ -111,6 +111,49 @@ def pan_status():
             f"x_pixels=512 y_pixels=200\n")
 
 
+WF_STREAM_ID = 0x42000001
+
+
+def wf_sender(stop_event):
+    """Waterfall tiles (PCC 0x8004): 512 dBm bins per row, two tiles per
+    frame (timecode-keyed assembly), noise floor + peak tracking slice 0.
+    Subheader per PanadapterStream::decodeWaterfallTile; freqs are
+    VitaFrequency fixed-point (Hz * 2^20)."""
+    total_bins = 512
+    timecode = 0
+    seq = 0
+    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    print(f"waterfall sender -> {AUDIO_DEST}", flush=True)
+    while not stop_event.is_set():
+        f0 = pan["center"] - pan["bandwidth"] / 2
+        bin_bw = pan["bandwidth"] / total_bins
+        low_raw = int(f0 * 1e6 * (1 << 20))
+        bw_raw = int(bin_bw * 1e6 * (1 << 20))
+        peak_bin = int((slices[0]["RF_frequency"] - f0) / pan["bandwidth"] * total_bins)
+        dbm = []
+        for i in range(total_bins):
+            v = -120 + 4 * math.sin(i * 0.19 + timecode * 0.9)
+            if 0 <= peak_bin < total_bins and abs(i - peak_bin) < 6:
+                v = -60 - 6 * abs(i - peak_bin)
+            dbm.append(v)
+        half = total_bins // 2
+        for start in (0, half):
+            chunk = dbm[start:start + half]
+            sub = struct.pack(">qqIHHIIHH", low_raw, bw_raw, 0,
+                              len(chunk), 1, timecode, 0x30,
+                              total_bins, start)
+            payload = struct.pack(f">{len(chunk)}h",
+                                  *(int(v * 128) for v in chunk))
+            word0 = (0x3 << 28) | (0x1 << 24) | ((seq & 0xF) << 16) | (
+                (28 + len(sub) + len(payload)) // 4)
+            header = struct.pack(">IIIIIII", word0, WF_STREAM_ID,
+                                 0x00001C2D, 0x534C8004, 0, 0, 0)
+            sock.sendto(header + sub + payload, AUDIO_DEST)
+            seq += 1
+        timecode += 1
+        stop_event.wait(0.1)
+
+
 def fft_sender(stop_event):
     """FFT frames: 512 u16 bins (y-pixel from top, ypixels=200), a noise
     floor with a peak that tracks slice 0's frequency, 2 packets/frame,
@@ -192,6 +235,8 @@ def serve(conn, addr):
                     f"R{seq}|0|0x{PAN_STREAM_ID:08X},0x42000001\n".encode())
                 conn.sendall(pan_status().encode())
                 threading.Thread(target=fft_sender, args=(audio_stop,),
+                                 daemon=True).start()
+                threading.Thread(target=wf_sender, args=(audio_stop,),
                                  daemon=True).start()
                 continue
             if cmd.startswith("display pan set"):

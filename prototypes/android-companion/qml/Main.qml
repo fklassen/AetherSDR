@@ -292,13 +292,16 @@ ApplicationWindow {
 
                 Item {
                     Layout.fillWidth: true
-                    Layout.preferredHeight: connection.spectrumActive ? 160 : 0
+                    Layout.preferredHeight: connection.spectrumActive ? 280 : 0
                     visible: connection.spectrumActive
                     clip: true
 
                     SpectrumStrip {
                         id: strip
-                        anchors.fill: parent
+                        anchors.top: parent.top
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        height: 160
                         yScale: 200
 
                         Connections {
@@ -324,6 +327,28 @@ ApplicationWindow {
                                 if (active)
                                     connection.tune(0, strip.freqAt(centroid.position.x))
                             }
+                        }
+                    }
+
+                    WaterfallStrip {
+                        id: waterfall
+                        anchors.top: strip.bottom
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        minDbm: -130
+                        maxDbm: -40
+
+                        Connections {
+                            target: connection.vita
+                            function onWaterfallRow(bins) { waterfall.addRow(bins) }
+                        }
+
+                        // Same x → frequency mapping as the spectrum strip.
+                        TapHandler {
+                            onTapped: (eventPoint) =>
+                                connection.tune(0, strip.freqAt(
+                                    eventPoint.position.x))
                         }
                     }
 

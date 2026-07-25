@@ -14,7 +14,9 @@ constexpr int kVitaHeaderBytes = 28;
 constexpr quint16 kPccIfNarrow = 0x03E3;
 constexpr quint16 kPccOpus = 0x8005;
 constexpr quint16 kPccFft = 0x8003;
+constexpr quint16 kPccWaterfall = 0x8004;
 constexpr quint16 kPccMeter = 0x8002;
+constexpr int kTileSubheaderBytes = 36;
 constexpr int kFftSubheaderBytes = 12;
 constexpr int kSampleRate = 24000;
 // One Opus frame per VITA packet, 10 ms at 24 kHz (OpusCodec.h facts).
@@ -101,6 +103,20 @@ void VitaStream::clearAudioStream()
     }
 }
 
+void VitaStream::setWaterfallStream(quint32 streamId)
+{
+    m_wfStreamId = streamId;
+    m_wfBuf.clear();
+    m_wfBinsReceived = 0;
+}
+
+void VitaStream::clearWaterfallStream()
+{
+    m_wfStreamId = 0;
+    m_wfBuf.clear();
+    m_wfBinsReceived = 0;
+}
+
 void VitaStream::setFftStream(quint32 streamId)
 {
     m_fftStreamId = streamId;
@@ -149,6 +165,9 @@ void VitaStream::onReadyRead()
         } else if (pcc == kPccFft && streamId == m_fftStreamId) {
             ++m_packetsReceived;
             handleFft(raw, data.size(), hasTrailer);
+        } else if (pcc == kPccWaterfall && streamId == m_wfStreamId) {
+            ++m_packetsReceived;
+            handleWaterfall(raw, data.size(), hasTrailer);
         } else if (pcc == kPccMeter) {
             ++m_packetsReceived;
             handleMeter(raw, data.size(), hasTrailer);
@@ -216,6 +235,54 @@ void VitaStream::handleOpusAudio(const uchar* raw, int size, bool hasTrailer)
     Q_UNUSED(size);
     Q_UNUSED(hasTrailer);
 #endif
+}
+
+void VitaStream::handleWaterfall(const uchar* raw, int size, bool hasTrailer)
+{
+    // Tile: 36-byte subheader — lowFreq i64 (Hz × 2^20), binBw i64,
+    // [16..19 reserved], tileWidth u16 @20, tileHeight u16 @22,
+    // timecode u32 @24, autoBlack u32 @28, totalBinsInFrame u16 @32,
+    // firstBinIndex u16 @34; payload u16 BE bins, dBm = int16/128.
+    // Facts + frame-assembly rules per PanadapterStream::decodeWaterfallTile
+    // (including the GHSA-7gvg-x594-pprq reset-on-totalBins-change guard).
+    if (size < kVitaHeaderBytes + kTileSubheaderBytes)
+        return;
+    const uchar* sub = raw + kVitaHeaderBytes;
+    const quint16 tileWidth = qFromBigEndian<quint16>(sub + 20);
+    const quint32 timecode = qFromBigEndian<quint32>(sub + 24);
+    const quint16 totalBins = qFromBigEndian<quint16>(sub + 32);
+    const quint16 firstBin = qFromBigEndian<quint16>(sub + 34);
+    if (tileWidth == 0 || totalBins == 0)
+        return;
+
+    const int payloadOffset = kVitaHeaderBytes + kTileSubheaderBytes;
+    const int payloadBytes = size - payloadOffset - (hasTrailer ? 4 : 0);
+    if (payloadBytes < tileWidth * 2)
+        return;
+
+    if (timecode != m_wfTimecode || m_wfBuf.size() != totalBins) {
+        m_wfTimecode = timecode;
+        m_wfBuf.fill(-999.0f, totalBins);
+        m_wfBinsReceived = 0;
+    }
+
+    const int binsToRead =
+        qMin<int>(tileWidth, static_cast<int>(totalBins) - firstBin);
+    if (binsToRead <= 0 || firstBin + binsToRead > m_wfBuf.size())
+        return;
+
+    const uchar* payload = raw + payloadOffset;
+    for (int i = 0; i < binsToRead; ++i) {
+        const auto raw16 =
+            static_cast<qint16>(qFromBigEndian<quint16>(payload + i * 2));
+        m_wfBuf[firstBin + i] = static_cast<float>(raw16) / 128.0f;
+    }
+    m_wfBinsReceived += binsToRead;
+
+    if (m_wfBinsReceived >= totalBins) {
+        emit waterfallRow(m_wfBuf);
+        m_wfBinsReceived = 0;
+    }
 }
 
 void VitaStream::handleMeter(const uchar* raw, int size, bool hasTrailer)

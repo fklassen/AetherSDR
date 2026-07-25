@@ -192,15 +192,25 @@ void ConnectionModel::startSpectrum()
                 [this](int code, const QString& body) {
                     if (code != 0)
                         return;
-                    const QString first = body.split(',').first().trimmed();
-                    bool ok = false;
-                    const quint32 id =
-                        first.startsWith("0x")
-                            ? first.mid(2).toUInt(&ok, 16)
-                            : first.toUInt(&ok, 16);
-                    if (!ok || id == 0)
+                    const QStringList ids = body.split(',');
+                    const auto parseId = [](const QString& text) -> quint32 {
+                        const QString t = text.trimmed();
+                        bool ok = false;
+                        const quint32 v = t.startsWith("0x")
+                                              ? t.mid(2).toUInt(&ok, 16)
+                                              : t.toUInt(&ok, 16);
+                        return ok ? v : 0;
+                    };
+                    const quint32 id = ids.isEmpty() ? 0 : parseId(ids[0]);
+                    if (id == 0)
                         return;
                     m_panId = id;
+                    // Second field is the paired waterfall stream id.
+                    if (ids.size() >= 2) {
+                        const quint32 wfId = parseId(ids[1]);
+                        if (wfId != 0)
+                            m_vita.setWaterfallStream(wfId);
+                    }
                     const QString hexId =
                         QStringLiteral("0x%1").arg(id, 8, 16, QChar('0'));
                     sendCommand(QStringLiteral(
@@ -217,6 +227,7 @@ void ConnectionModel::startSpectrum()
 void ConnectionModel::stopSpectrum()
 {
     m_vita.clearFftStream();
+    m_vita.clearWaterfallStream();
     if (m_panId != 0) {
         sendCommand(QStringLiteral("display pan remove 0x%1")
                         .arg(m_panId, 8, 16, QChar('0')));

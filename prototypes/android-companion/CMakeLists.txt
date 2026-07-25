@@ -36,6 +36,8 @@ qt_add_qml_module(aethercompanion
     SOURCES
         src/SpectrumStrip.cpp
         src/SpectrumStrip.h
+        src/WaterfallStrip.cpp
+        src/WaterfallStrip.h
 )
 
 # The generated QML type registration includes <SpectrumStrip.h>.

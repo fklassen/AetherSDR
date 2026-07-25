@@ -67,6 +67,15 @@ populates from live broadcasts within ~1 s of a radio being present.
   opus (venv + `pip install opuslib`, needs a host libopus, e.g.
   `DYLD_LIBRARY_PATH=/usr/local/opt/opus/lib`); PCM mode needs neither.
 
+- **Waterfall** — VITA PCC 0x8004 tiles (36-byte subheader:
+  VitaFrequency i64 lowFreq/binBw at Hz·2²⁰, width/height, timecode,
+  autoBlack, totalBins/firstBin; u16 BE bins, dBm = int16/128;
+  timecode-keyed frame assembly per
+  `PanadapterStream::decodeWaterfallTile` incl. the
+  GHSA-7gvg-x594-pprq reset guard). Waterfall stream id is the second
+  comma field of the panafall create reply. Renders as a scrolling
+  history strip under the spectrum (black→blue→yellow→white ramp over
+  the pan dBm range); tap it to tune, same mapping as the spectrum.
 - **SmartLink (WAN)** — Auth0 ROPC login (facts per
   `src/core/SmartLinkClient.{h,cpp}`: password-realm grant, public
   client id, `offline_access` scope), TLS broker line protocol

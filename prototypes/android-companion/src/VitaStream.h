@@ -48,6 +48,9 @@ public:
     void setFftStream(quint32 streamId);
     void clearFftStream();
 
+    void setWaterfallStream(quint32 streamId);
+    void clearWaterfallStream();
+
 signals:
     void statsChanged();
     // One complete FFT frame; values are y-pixels from the top at the
@@ -56,6 +59,8 @@ signals:
     // Meter data packet (PCC 0x8002): parallel id/raw-value arrays.
     // Value semantics depend on the meter's unit (dBm = raw/128).
     void meterData(QVector<quint16> ids, QVector<qint16> values);
+    // One assembled waterfall row (PCC 0x8004): bin values in dBm.
+    void waterfallRow(QVector<float> dbmBins);
 
 private:
     void onReadyRead();
@@ -63,6 +68,7 @@ private:
     void handleAudio(const uchar* raw, int size, bool hasTrailer);
     void handleOpusAudio(const uchar* raw, int size, bool hasTrailer);
     void handleFft(const uchar* raw, int size, bool hasTrailer);
+    void handleWaterfall(const uchar* raw, int size, bool hasTrailer);
     void handleMeter(const uchar* raw, int size, bool hasTrailer);
     void writePcmFloats(const float* samples, int count);
 
@@ -82,4 +88,10 @@ private:
     QVector<quint16> m_frameBuf;
     quint32 m_frameIndex{0};
     int m_frameBinsReceived{0};
+
+    // Waterfall frame assembly (single stream, timecode-keyed)
+    quint32 m_wfStreamId{0};
+    QVector<float> m_wfBuf;
+    quint32 m_wfTimecode{0};
+    int m_wfBinsReceived{0};
 };
